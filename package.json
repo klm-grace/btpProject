@@ -1,0 +1,27 @@
+{
+  "name": "btp-project",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f",
+    "api:dev": "bun --watch apps/api/index.ts",
+    "api:start": "bun run apps/api/index.ts",
+    "dev": "bun run api:dev",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build apps/api/index.ts --outdir dist --target bun",
+    "start": "bun run dist/index.js"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

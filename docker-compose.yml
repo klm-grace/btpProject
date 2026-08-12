@@ -1,0 +1,55 @@
+# Infrastructure locale de développement — PostgreSQL + Redis
+# Bind STRICTEMENT sur 127.0.0.1 (jamais 0.0.0.0)
+# Credentials de dev uniquement via .env (jamais hardcodés dans le code app)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: btp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-btp_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-btp_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-btp_dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - btp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-btp_dev} -d ${POSTGRES_DB:-btp_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - btp-internal
+
+  redis:
+    image: redis:alpine
+    container_name: btp-redis
+    restart: unless-stopped
+    # Pas de mot de passe en dev local (réseau privé localhost uniquement)
+    command: ["redis-server", "--appendonly", "yes", "--bind", "0.0.0.0", "--protected-mode", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - btp_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - btp-internal
+
+volumes:
+  btp_pgdata:
+    name: btp_pgdata
+  btp_redisdata:
+    name: btp_redisdata
+
+networks:
+  btp-internal:
+    name: btp-internal
+    driver: bridge
