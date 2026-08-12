@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Créer le socle HTTP de l’API Bun : routage, erreurs, logs, structure JSON et endpoints techniques.
+Créer le socle HTTP de l'API Bun : routage, erreurs, logs, structure JSON et endpoints techniques.
 
 ---
 
@@ -37,6 +37,13 @@ Cette section couvre :
 - chaque réponse doit avoir un format JSON cohérent,
 - chaque requête doit recevoir un `requestId`.
 
+### Bibliothèques vs serveur
+
+- Le **seul** `Bun.serve` vit dans `apps/api` (composition).
+- Routeur, erreurs HTTP, format JSON, requestId, logging : **briques importables** sous `src/libs/` (ex. `router`, `errors`, `logger`) — **aucune** de ces bibliothèques n'écoute un port.
+- Factories `createXxx(config)` + injection ; pas de `process.env` dans les bibliothèques.
+- Réutilisable dans un autre projet Bun sans réécriture du cœur.
+
 ---
 
 ## Logs
@@ -60,7 +67,7 @@ Ne jamais logger :
 
 ## Sécurité
 
-- pas de fuite d’erreurs internes,
+- pas de fuite d'erreurs internes,
 - body size limits,
 - timeouts,
 - gestion propre des routes inconnues,
@@ -68,7 +75,7 @@ Ne jamais logger :
 
 ---
 
-## Critères d’acceptation
+## Critères d'acceptation
 
 - [ ] Le serveur démarre.
 - [ ] Le routeur fonctionne.
@@ -77,7 +84,8 @@ Ne jamais logger :
 - [ ] Les réponses JSON sont standardisées.
 - [ ] Chaque requête possède un requestId.
 - [ ] Les logs sont structurés.
-- [ ] Aucune erreur brute n’est renvoyée au client.
+- [ ] Aucune erreur brute n'est renvoyée au client.
+- [ ] Routeur / errors / logger sont des bibliothèques (pas de port) ; seul `apps/api` écoute.
 - [ ] Les méthodes non autorisées sont gérées.
 
 ---

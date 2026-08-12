@@ -23,12 +23,19 @@ Cette section couvre :
 - toutes les mutations admin doivent être protégées,
 - le token doit être lié à la session,
 - le token doit être vérifié côté serveur,
-- l’absence de token doit provoquer un rejet,
+- l'absence de token doit provoquer un rejet,
 - les formulaires publics peuvent utiliser :
   - rate limiting,
   - honeypot,
   - validation,
   - captcha invisible si nécessaire.
+
+### Bibliothèque `csrf`
+
+- Token CSRF = code sous `src/libs/csrf/` : `createCsrf(deps, config)` (generate / verify / middleware factory).
+- **Pas** de service CSRF sur un port ; l'app applique le middleware sur les mutations.
+- Config et store (Redis/session) **injectés** ; pas de `process.env` dans la bibliothèque.
+- Réutilisable dans un autre projet ; README de bibliothèque obligatoire.
 
 ---
 
@@ -40,7 +47,7 @@ Cette section couvre :
 
 ---
 
-## Critères d’acceptation
+## Critères d'acceptation
 
 - [ ] Un token CSRF peut être généré.
 - [ ] Le token est lié à la session.

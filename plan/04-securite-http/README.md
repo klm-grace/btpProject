@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Durcir la couche HTTP et préparer proprement l’API derrière un reverse proxy.
+Durcir la couche HTTP et préparer proprement l'API derrière un reverse proxy.
 
 ---
 
@@ -15,7 +15,7 @@ Cette section couvre :
 - HSTS,
 - CORS,
 - trusted proxy,
-- extraction sécurisée de l’IP réelle,
+- extraction sécurisée de l'IP réelle,
 - limites de requêtes.
 
 ---
@@ -38,11 +38,17 @@ Cette section couvre :
 - méthodes autorisées explicites,
 - origines validées.
 
+### Bibliothèques sécurité HTTP
+
+- Headers, CORS, trusted proxy, extraction IP : code sous `src/libs/` (ex. `http-security`, `cors`) — **bibliothèques**, pas de process sur un port.
+- `createSecurityHeaders(config)`, `createCors(config)`, etc. ; config injectée (origines, proxy trust) — pas de `process.env` dans la bibliothèque.
+- L'app compose ces middlewares sur `Bun.serve`. Réutilisable hors BTP ; README de bibliothèque obligatoire.
+
 ---
 
 ## Règles proxy
 
-- l’IP réelle doit être extraite uniquement derrière proxy de confiance,
+- l'IP réelle doit être extraite uniquement derrière proxy de confiance,
 - ne jamais faire aveuglément confiance à `X-Forwarded-For`,
 - configuration documentée pour dev et production.
 
@@ -57,16 +63,16 @@ Cette section couvre :
 
 ---
 
-## Critères d’acceptation
+## Critères d'acceptation
 
 - [ ] Tous les headers de sécurité sont appliqués.
 - [ ] CSP est configurée.
 - [ ] HSTS est présent.
 - [ ] CORS est strict.
 - [ ] Le trusted proxy est configuré correctement.
-- [ ] L’IP réelle est extraite proprement.
+- [ ] L'IP réelle est extraite proprement.
 - [ ] Les headers sont testés.
-- [ ] Aucune configuration dangereuse n’est présente.
+- [ ] Aucune configuration dangereuse n'est présente.
 
 ---
 
@@ -75,5 +81,5 @@ Cette section couvre :
 - vérifier les headers sur une réponse,
 - tester une origine CORS autorisée,
 - tester une origine CORS non autorisée,
-- vérifier l’IP extraite derrière proxy,
+- vérifier l'IP extraite derrière proxy,
 - vérifier les réponses 404/500 avec headers.

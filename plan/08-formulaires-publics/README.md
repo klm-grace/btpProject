@@ -32,10 +32,16 @@ Cette section couvre :
 
 ---
 
+## Bibliothèques vs métier
+
+- Validation, honeypot, helpers de consentement / anti-abus **génériques** → sous `src/libs/` (bibliothèques, injection, pas de port).
+- Endpoints contact/devis et mapping vers le schéma leads → **couche app** (métier BTP), qui compose les bibliothèques.
+- Réutiliser rate-limit / validation déjà livrés ; ne pas recréer un mini-serveur formulaires.
+
 ## Règles de sécurité
 
 - validation serveur systématique,
-- pas d’exécution de HTML,
+- pas d'exécution de HTML,
 - pas de confiance dans les champs cachés,
 - rate limiting par IP et par endpoint,
 - journalisation des abus.
@@ -48,31 +54,31 @@ Cette section couvre :
 - version du consentement,
 - horodatage,
 - minimisation des données,
-- possibilité d’archiver / purger plus tard.
+- possibilité d'archiver / purger plus tard.
 
 ---
 
 ## Email / notification
 
-- ne pas bloquer la réponse utilisateur sur l’envoi email,
+- ne pas bloquer la réponse utilisateur sur l'envoi email,
 - utiliser une outbox,
-- réessayer en cas d’échec,
-- ne jamais exposer d’erreur SMTP au client.
+- réessayer en cas d'échec,
+- ne jamais exposer d'erreur SMTP au client.
 
 ---
 
-## Critères d’acceptation
+## Critères d'acceptation
 
-- [ ] L’endpoint contact fonctionne.
-- [ ] L’endpoint devis fonctionne.
+- [ ] L'endpoint contact fonctionne.
+- [ ] L'endpoint devis fonctionne.
 - [ ] La validation Zod est en place.
 - [ ] Le consentement est enregistré.
 - [ ] Le honeypot est présent.
 - [ ] Le rate limiting fonctionne.
 - [ ] Les abus sont journalisés.
 - [ ] Les réponses sont propres.
-- [ ] L’outbox email est utilisée.
-- [ ] Aucune erreur technique n’est renvoyée au client.
+- [ ] L'outbox email est utilisée.
+- [ ] Aucune erreur technique n'est renvoyée au client.
 
 ---
 
@@ -85,4 +91,4 @@ Cette section couvre :
 - soumissions répétées,
 - honeypot rempli,
 - vérification du stockage en base,
-- vérification de l’outbox.
+- vérification de l'outbox.

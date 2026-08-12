@@ -81,6 +81,35 @@ L’agent de développement doit respecter strictement ce fonctionnement :
 
 ---
 
+## Bibliothèques réutilisables — contrat NON NÉGOCIABLE
+
+Les briques techniques vivent sous `src/libs/*`. Ce sont des **bibliothèques de code** : on les importe, on ne les lance pas.
+
+### Principe
+
+> Les bibliothèques sont des Lego de code. L’app les assemble. **Seul** le process API (`apps/api` via `Bun.serve`) et le frontend Next.js écoutent un port.
+
+### Règles
+
+1. **Une bibliothèque n’écoute jamais un port** — pas de `Bun.serve`, pas de `listen`, pas de process autonome dans `src/libs/*`.
+2. **API pure** — factory `createXxx(config)` / fonctions exportées ; **aucun effet de bord à l’import**.
+3. **Injection** — aucune lecture de `process.env` dans une bibliothèque ; la config (DB, Redis, S3, secrets) est passée en paramètre. Seule l’app lit l’env.
+4. **Réutilisation** — copier la bibliothèque (ou l’extraire en package) dans un autre projet, injecter la config de *ce* projet, brancher sur *ses* routes — **sans tout réécrire**.
+5. **Zéro métier BTP** dans les bibliothèques génériques (auth, CSRF, rate-limit, upload, sessions, pagination, errors, logger, health, db, redis, config…). Le métier (portfolio, leads, contenus) vit dans la couche app / handlers.
+6. **Documentation** — chaque bibliothèque a son `README.md` local (rôle, API, prérequis, exemple d’import autre projet). **Pas** de fichier global d’architecture : ce contrat vit ici (`plan/README.md`), dans le prompt agent, et dans les README des bibliothèques.
+7. **Dépendances** — entre bibliothèques uniquement via interfaces / paramètres explicites, pas de singletons cachés.
+
+### Qui écoute un port ?
+
+| Composant | Port ? | Rôle |
+|-----------|--------|------|
+| `apps/api` | Oui (`PORT`) | Composition HTTP |
+| `apps/web` | Oui | Frontend Next.js |
+| `src/libs/*` | **Non** | Bibliothèques importables |
+| PostgreSQL / Redis | Infra | Externes |
+
+---
+
 ## Découpage final
 
 Le projet est découpé en 17 sections :
@@ -139,6 +168,9 @@ Une section est terminée uniquement si :
 - Ne jamais concaténer des entrées utilisateur dans une requête SQL.
 - Ne jamais exécuter une requête sans paramètres bindés ou requête préparée.
 - Ne jamais renvoyer ou logger des erreurs SQL brutes.
+- Ne jamais faire d’une bibliothèque (`src/libs/*`) un serveur ou un process qui écoute un port.
+- Ne jamais lire `process.env` à l’intérieur d’une bibliothèque.
+- Ne jamais créer de fichier d’architecture global hors de ce plan et des README des bibliothèques.
 
 ---
 
@@ -151,5 +183,6 @@ Une section est terminée uniquement si :
 - points de sécurité couverts,
 - points RGPD couverts si applicable,
 - tests exécutés,
+- bibliothèques livrées (confirmation : réutilisables, **pas de port**),
 - ce qui reste pour les sections suivantes,
 - demande explicite de validation.

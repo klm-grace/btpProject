@@ -1,7 +1,10 @@
 # Section 2 — Base de données et migrations
 
+> Migrations / accès SQL restent branchés sur la bibliothèque `db` (injection, pas de port). Pas de mini-service DB applicatif. Contrat : `plan/README.md`.
+
 ## Objectif
 
+Créer un modèle de données complet, sûr, indexé et prêt à accueillir toutes les fonctionnalités du site.
 Créer un modèle de données complet, sûr, indexé et prêt à accueillir toutes les fonctionnalités du site.
 
 ---

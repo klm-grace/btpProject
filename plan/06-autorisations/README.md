@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Mettre en place un contrôle d’accès réel basé sur rôles et permissions, avec vérification par ressource.
+Mettre en place un contrôle d'accès réel basé sur rôles et permissions, avec vérification par ressource.
 
 ---
 
@@ -13,8 +13,8 @@ Cette section couvre :
 - rôles,
 - permissions,
 - association rôles / permissions,
-- middleware d’authentification,
-- middleware d’autorisation,
+- middleware d'authentification,
+- middleware d'autorisation,
 - vérification par ressource.
 
 ---
@@ -35,6 +35,13 @@ Cette section couvre :
 - chaque accès à une ressource doit vérifier le droit sur cette ressource,
 - les permissions doivent être vérifiées côté serveur.
 
+### Bibliothèque RBAC / autorisations
+
+- Rôles, permissions, middlewares d'authz : code sous `src/libs/` (ex. `rbac`, `authz`) en **bibliothèque** — `createRbac(deps, config)` / guards exportés.
+- **Aucun** process ni port dédié ; l'API compose les guards sur ses routes.
+- Injection des deps (session reader, store permissions…) ; pas de `process.env` dans la bibliothèque.
+- Réutilisable hors projet BTP ; README de bibliothèque + exemple d'import autre projet.
+
 ---
 
 ## Middlewares attendus
@@ -48,13 +55,13 @@ Cette section couvre :
 ## Sécurité
 
 - pas de contrôle uniquement côté frontend,
-- pas d’autorisation implicite,
+- pas d'autorisation implicite,
 - refus explicite si permission manquante,
 - journalisation des accès refusés si pertinent.
 
 ---
 
-## Critères d’acceptation
+## Critères d'acceptation
 
 - [ ] Les rôles existent.
 - [ ] Les permissions existent.
@@ -63,7 +70,7 @@ Cette section couvre :
 - [ ] `requirePermission` fonctionne.
 - [ ] Les accès non autorisés sont refusés.
 - [ ] Les permissions sont vérifiées côté serveur.
-- [ ] Les tests d’accès non autorisé passent.
+- [ ] Les tests d'accès non autorisé passent.
 
 ---
 
@@ -72,5 +79,5 @@ Cette section couvre :
 - accès avec rôle autorisé,
 - accès avec rôle non autorisé,
 - accès sans session,
-- accès à une ressource d’un autre périmètre si applicable,
+- accès à une ressource d'un autre périmètre si applicable,
 - refus journalisé si prévu.

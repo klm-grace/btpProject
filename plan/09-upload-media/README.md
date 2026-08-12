@@ -10,7 +10,7 @@ Gérer les fichiers et images de façon sécurisée, fiable et compatible avec u
 
 Cette section couvre :
 
-- upload d’images,
+- upload d'images,
 - validation MIME réelle,
 - validation magic bytes,
 - taille maximale,
@@ -30,6 +30,13 @@ Cette section couvre :
 - vérifier le contenu réel du fichier,
 - limiter la taille avant traitement,
 - rejeter les fichiers non autorisés.
+
+### Bibliothèque `upload` / médias
+
+- Pipeline upload, validation MIME/magic bytes, client S3, variantes : fichiers sous `src/libs/` (ex. `upload`, `media`) en **bibliothèque**.
+- `createUpload(deps, config)` — client S3 et limites **injectés** ; pas de `process.env` dans la bibliothèque ; **pas** de serveur upload autonome.
+- L'API expose les routes d'upload en composant la bibliothèque.
+- Réutilisable hors BTP ; README de bibliothèque + exemple d'import autre projet.
 
 ---
 
@@ -64,10 +71,10 @@ Cette section couvre :
 
 ---
 
-## Critères d’acceptation
+## Critères d'acceptation
 
-- [ ] L’upload valide fonctionne.
-- [ ] L’upload invalide est rejeté.
+- [ ] L'upload valide fonctionne.
+- [ ] L'upload invalide est rejeté.
 - [ ] MIME réel vérifié.
 - [ ] Magic bytes vérifiés.
 - [ ] Taille maximale respectée.

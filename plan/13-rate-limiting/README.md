@@ -16,7 +16,7 @@ Cette section couvre :
 - réponse 429,
 - header Retry-After,
 - événements de sécurité,
-- comportement en cas d’indisponibilité Redis.
+- comportement en cas d'indisponibilité Redis.
 
 ---
 
@@ -35,9 +35,17 @@ Cette section couvre :
 
 - limites explicites par endpoint,
 - limites progressives si pertinent,
-- Redis via variables d’environnement (conteneur Docker en dev, instance en ligne en prod — **même code**),
-- jamais d’ouverture silencieuse si Redis est indisponible,
+- Redis via variables d'environnement (conteneur Docker en dev, instance en ligne en prod — **même code**),
+- jamais d'ouverture silencieuse si Redis est indisponible,
 - prévoir une dégradation contrôlée.
+
+### Bibliothèque `rate-limit`
+
+- Rate limiting + (si pertinent) journalisation d'événements de sécurité : `src/libs/rate-limit/` (et bibliothèque `security-events` si découpé).
+- `createRateLimiter(deps, config)` — client Redis **injecté** ; pas de `process.env` dans la bibliothèque ; **aucun** port dédié.
+- L'app applique le limiteur sur les routes sensibles.
+- Comportement Redis down = config injectée / politique explicite, pas de magie globale.
+- Réutilisable hors BTP ; README de bibliothèque obligatoire.
 
 ---
 
@@ -50,7 +58,7 @@ Cette section couvre :
 
 ---
 
-## Critères d’acceptation
+## Critères d'acceptation
 
 - [ ] Rate limiting par IP fonctionnel.
 - [ ] Rate limiting par endpoint fonctionnel.
