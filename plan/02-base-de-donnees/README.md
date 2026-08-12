@@ -19,6 +19,12 @@ Cette section couvre :
 - les seeds minimales,
 - la documentation du modèle.
 
+### Prérequis (section 01)
+
+- PostgreSQL accessible via les variables d’environnement (conteneur Docker local en dev).
+- Les migrations et seeds s’exécutent **contre l’URL / les credentials fournis par l’env**.
+- Aucune cible de base hardcodée : la même commande de migration fonctionne en dev (Docker) et en prod (DB en ligne) en changeant uniquement l’env.
+
 ---
 
 ## Tables obligatoires

@@ -29,7 +29,7 @@ Cette section couvre :
 - algorithme `argon2id`,
 - paramètres alignés OWASP,
 - pas de JWT,
-- session opaque stockée dans Redis,
+- session opaque stockée dans Redis (**client branché sur `REDIS_URL` / env**, même code en dev Docker et en prod),
 - session révocable côté serveur,
 - rotation de session après login.
 

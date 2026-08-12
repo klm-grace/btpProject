@@ -33,6 +33,14 @@ Cette section couvre :
 - frontend derrière reverse proxy,
 - secrets injectés proprement.
 
+### Contrat d’environnement (dev → prod)
+
+- Les **mêmes noms** de variables (`DATABASE_URL`, `REDIS_URL`, etc.) qu’en section 01.
+- En production : valeurs injectées (secrets / plateforme) vers PostgreSQL et Redis **en ligne** (managés ou auto-hébergés).
+- Le `docker-compose` de **développement** (section 01) n’est **pas** le déploiement de production.
+- Compose / orchestration prod peut coexister, mais l’app ne dépend que de l’env, pas du fichier compose.
+- Changer de base ou de Redis = changer l’env, **sans rebuild applicatif** si les clients supportent l’URL fournie.
+
 ---
 
 ## Observabilité

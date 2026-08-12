@@ -35,6 +35,7 @@ Cette section couvre :
 
 - limites explicites par endpoint,
 - limites progressives si pertinent,
+- Redis via variables d’environnement (conteneur Docker en dev, instance en ligne en prod — **même code**),
 - jamais d’ouverture silencieuse si Redis est indisponible,
 - prévoir une dégradation contrôlée.
 

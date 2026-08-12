@@ -20,7 +20,6 @@ Le projet est un site internet professionnel pour une entreprise d’Architectur
 
 ## Hors périmètre
 
-WordPress et MCP sont hors périmètre.
 Ce projet concerne uniquement la stack custom :
 
 - Backend : Bun.js natif
@@ -65,6 +64,13 @@ L’agent de développement doit respecter strictement ce fonctionnement :
 - React
 - TypeScript
 
+### Infrastructure locale (développement)
+
+- Docker Compose pour **PostgreSQL** et **Redis**
+- l’application se connecte **uniquement** via variables d’environnement
+- en production : mêmes variables, valeurs pointant vers les services en ligne
+- **aucun changement de code** pour basculer dev → prod (seulement le `.env` / secrets)
+
 ### Sécurité / validation
 
 - Zod uniquement pour la validation
@@ -97,7 +103,7 @@ Le projet est découpé en 17 sections :
 16. Tests, sécurité et charge
 17. Déploiement, observabilité et sauvegardes
 
-Chaque section possède son propre fichier `README.md` dans `docs/sections/`.
+Chaque section possède son propre fichier `README.md` dans `plan/`.
 
 ---
 
@@ -122,11 +128,17 @@ Une section est terminée uniquement si :
 - Ne jamais concaténer du SQL.
 - Ne jamais committer de secret.
 - Ne jamais exposer Redis ou PostgreSQL publiquement.
+- Ne jamais hardcoder un hôte / port / credential de base de données ou de Redis dans le code.
+- Ne jamais basculer dev/prod par branche de code : **uniquement** via variables d’environnement.
 - Ne jamais stocker durablement un fichier utilisateur sur le disque applicatif.
 - Ne jamais renvoyer une erreur technique brute au client.
 - Ne jamais logger des données sensibles.
 - Ne jamais avancer plusieurs sections en parallèle.
 - Ne jamais ajouter une dépendance serveur non validée.
+- Ne jamais laisser une requête SQL non maîtrisée atteindre la base de données.
+- Ne jamais concaténer des entrées utilisateur dans une requête SQL.
+- Ne jamais exécuter une requête sans paramètres bindés ou requête préparée.
+- Ne jamais renvoyer ou logger des erreurs SQL brutes.
 
 ---
 
