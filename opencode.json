@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "bruno-mcp": {
+      "type": "local",
+      "command": ["npx", "-y", "bruno-mcp"],
+      "enabled": true
+    }
+  }
+}

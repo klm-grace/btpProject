@@ -1,0 +1,48 @@
+# Dépendances
+node_modules/
+
+# Environnement (secrets) — jamais commiter
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Builds
+dist/
+build/
+.next/
+out/
+
+# Tests / couverture / rapports
+coverage/
+reports/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+bun-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+*.tsbuildinfo.*
+
+# Bun
+.bun/
+.bun-tooling/
+
+# Données locales
+data/
+.pgdata/
+uploads/
+tmp/
+
+# Éditeurs / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
