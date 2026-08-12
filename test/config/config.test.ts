@@ -19,8 +19,8 @@ describe("config", () => {
     expect(c.server.port).toBe(4000);
     expect(c.server.host).toBe("127.0.0.1");
     expect(c.log.level).toBe("info");
-    expect(c.db.url).toBe(valid.DATABASE_URL);
-    expect(c.redis.url).toBe(valid.REDIS_URL);
+    expect(c.db.url).toBe(valid.DATABASE_URL!);
+    expect(c.redis.url).toBe(valid.REDIS_URL!);
   });
 
   it("applique les défauts quand absent", () => {

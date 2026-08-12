@@ -22,7 +22,6 @@ export class HttpError extends AppError {
 
   constructor(status: number, message: string, options: AppErrorOptions = {}) {
     super(message, { ...options, code: options.code ?? `http_${status}` });
-    this.code = options.code ?? `http_${status}`;
     this.name = "HttpError";
     this.status = status;
   }

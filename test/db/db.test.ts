@@ -9,7 +9,7 @@ import { createConfig } from "../../src/libs/config/index.ts";
 
 const env = {
   DATABASE_URL: process.env.DATABASE_URL ?? "postgres://btp_dev:btp_dev_password@127.0.0.1:5432/btp_dev",
-  REDIS_URL: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+  REDIS_URL: process.env.REDIS_URL ?? "redis://:btp_dev_redis_password@127.0.0.1:6379",
   NODE_ENV: "test",
 };
 
