@@ -14,7 +14,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - btp_pgdata:/var/lib/postgresql/data
+      - ./data/db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-btp_dev} -d ${POSTGRES_DB:-btp_dev}"]
       interval: 5s
@@ -33,7 +33,7 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
-      - btp_redisdata:/data
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -42,12 +42,6 @@ services:
       start_period: 5s
     networks:
       - btp-internal
-
-volumes:
-  btp_pgdata:
-    name: btp_pgdata
-  btp_redisdata:
-    name: btp_redisdata
 
 networks:
   btp-internal:
