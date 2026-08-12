@@ -1,26 +1,42 @@
 import { z } from "zod";
 
-const logLevels = ["trace", "debug", "info", "warn", "error"] as const;
-const environments = ["development", "test", "production"] as const;
+const logLevels = {
+  trace: "trace",
+  debug: "debug",
+  info: "info",
+  warn: "warn",
+  error: "error",
+} as const;
+
+const environments = {
+  development: "development",
+  test: "test",
+  production: "production",
+} as const;
 
 const envSchema = z.object({
   app: z
-    .enum(environments, {
-      errorMap: () => ({ message: "NODE_ENV invalide (development|test|production)" }),
-    })
+    .enum(environments, { message: "NODE_ENV invalide (development|test|production)" })
     .default("development"),
   port: z.coerce.number().int().min(1).max(65535).default(4000),
   host: z.string().min(1).default("127.0.0.1"),
   logLevel: z
-    .enum(logLevels, {
-      errorMap: () => ({ message: "LOG_LEVEL invalide (trace|debug|info|warn|error)" }),
-    })
+    .enum(logLevels, { message: "LOG_LEVEL invalide (trace|debug|info|warn|error)" })
     .default("info"),
   databaseUrl: z.string().url().min(1, "DATABASE_URL est requis"),
   redisUrl: z.string().url().min(1, "REDIS_URL est requis"),
 });
 
-function toConfig(parsed: z.infer<typeof envSchema>): AppConfig {
+type ParsedConfig = {
+  app: "development" | "test" | "production";
+  port: number;
+  host: string;
+  logLevel: "trace" | "debug" | "info" | "warn" | "error";
+  databaseUrl: string;
+  redisUrl: string;
+};
+
+function toConfig(parsed: ParsedConfig): AppConfig {
   return {
     env: parsed.app,
     server: { host: parsed.host, port: parsed.port },

@@ -14,7 +14,9 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - ./data/db:/var/lib/postgresql/data
+      # PG 18+ : monter /var/lib/postgresql (pas /var/lib/postgresql/data)
+      # pour permettre pg_upgrade propre ; les données vivent dans data/db.
+      - ./data/db:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-btp_dev} -d ${POSTGRES_DB:-btp_dev}"]
       interval: 5s
@@ -28,14 +30,19 @@ services:
     image: redis:alpine
     container_name: btp-redis
     restart: unless-stopped
-    # Pas de mot de passe en dev local (réseau privé localhost uniquement)
-    command: ["redis-server", "--appendonly", "yes", "--bind", "0.0.0.0", "--protected-mode", "yes"]
+    # Mot de passe dev via .env (placeholder dans .env.example) — non exposé publiquement.
+    # protected-mode actif + mot de passe = connexions uniquement autorisées avec AUTH.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-btp_dev_redis_password}
+    command: >
+      redis-server --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-btp_dev_redis_password}
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - ./data/redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
