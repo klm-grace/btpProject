@@ -6,7 +6,38 @@ const LEVEL_RANK: Record<LogLevel, number> = {
   error: 50,
 };
 
-/** Clés de champs dont la valeur est systématiquement masquée (défense en profondeur). */
+// ── Couleurs ANSI ────────────────────────────────────────────────────────────
+
+const C = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  gray: "\x1b[90m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  cyan: "\x1b[36m",
+  white: "\x1b[37m",
+} as const;
+
+const LEVEL_COLOR: Record<LogLevel, string> = {
+  trace: C.gray,
+  debug: C.cyan,
+  info: C.green,
+  warn: C.yellow,
+  error: C.red,
+};
+
+const LEVEL_LABEL: Record<LogLevel, string> = {
+  trace: "TRACE",
+  debug: "DEBUG",
+  info: "INFO ",
+  warn: "WARN ",
+  error: "ERROR",
+};
+
+// ── Clés sensibles (redaction automatique) ───────────────────────────────────
+
 const SENSITIVE_KEYS = new Set([
   "password",
   "passwd",
@@ -29,16 +60,11 @@ const SENSITIVE_KEYS = new Set([
   "password_hash",
 ]);
 
-/** Remplace la valeur des clés sensibles par "[REDACTED]". */
 function redact(value: unknown, depth = 0): unknown {
   if (depth > 10) return value;
   if (value === null || value === undefined) return value;
   if (typeof value !== "object") return value;
-
-  if (Array.isArray(value)) {
-    return value.map((v) => redact(v, depth + 1));
-  }
-
+  if (Array.isArray(value)) return value.map((v) => redact(v, depth + 1));
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
     const lower = key.toLowerCase();
@@ -47,7 +73,9 @@ function redact(value: unknown, depth = 0): unknown {
   return out;
 }
 
-function defaultSink(entry: LogEntry): void {
+// ── Sink JSON brut (production, logs structurés) ─────────────────────────────
+
+function jsonSink(entry: LogEntry): void {
   const line = JSON.stringify(entry);
   if (entry.level === "error" || entry.level === "warn") {
     console.error(line);
@@ -56,9 +84,55 @@ function defaultSink(entry: LogEntry): void {
   }
 }
 
-/** Construit un logger structuré (JSON). Configuration injectée, aucune env. */
+// ── Sink formaté couleur (terminal / dev) ────────────────────────────────────
+
+function formatField(key: string, value: unknown): string {
+  if (value === undefined) return "";
+  if (value === null) return `${C.gray}${key}${C.reset}=${C.dim}null${C.reset}`;
+  if (typeof value === "string") return `${C.gray}${key}${C.reset}=${C.white}${value}${C.reset}`;
+  if (typeof value === "number") return `${C.gray}${key}${C.reset}=${C.cyan}${String(value)}${C.reset}`;
+  if (typeof value === "boolean") return `${C.gray}${key}${C.reset}=${C.yellow}${String(value)}${C.reset}`;
+  return `${C.gray}${key}${C.reset}=${C.white}${JSON.stringify(value)}${C.reset}`;
+}
+
+function formattedSink(entry: LogEntry): void {
+  const time = new Date(entry.time).toISOString().slice(11, 23); // HH:mm:ss.SSS
+  const color = LEVEL_COLOR[entry.level];
+  const label = LEVEL_LABEL[entry.level];
+  const level = `${color}${C.bold}${label}${C.reset}`;
+
+  const fields = entry.fields ?? {};
+  const service = fields.service ? `${C.cyan}${C.bold}${fields.service}${C.reset}  ` : "";
+
+  const extraEntries = Object.entries(fields).filter(([k]) => k !== "service");
+  const extra = extraEntries.length > 0
+    ? "  " + extraEntries.map(([k, v]) => formatField(k, v)).join("  ")
+    : "";
+
+  const line = `${C.gray}${time}${C.reset} ${level}  ${service}${C.bold}${entry.message}${C.reset}${extra}`;
+
+  if (entry.level === "error" || entry.level === "warn") {
+    console.error(line);
+  } else {
+    console.log(line);
+  }
+}
+
+// ── Factory ──────────────────────────────────────────────────────────────────
+
+/**
+ * Construit un logger structuré (JSON ou formaté).
+ *
+ * - `formatted: true` → sortie couleur ANSI pour le terminal (dev).
+ * - `formatted: false/absent` → JSON brut 1 ligne (production, agrégable).
+ *
+ * Configuration injectée, aucune env, aucun port.
+ */
 export function createLogger(config: LoggerConfig): Logger {
-  const sink: LogSink = config.sink ?? config.defaultSink ?? defaultSink;
+  // Si un sink custom est fourni, il est prioritaire
+  const sink: LogSink = config.sink
+    ?? config.defaultSink
+    ?? (config.formatted ? formattedSink : jsonSink);
   const threshold = LEVEL_RANK[config.level];
 
   function write(level: LogLevel, message: string, fields?: Record<string, unknown>): void {

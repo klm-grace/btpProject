@@ -1,0 +1,22 @@
+meta {
+  name: Ready endpoint
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{base_url}}/api/ready
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+  res.body.data.ready: isDefined
+  res.body.data.status: isDefined
+}

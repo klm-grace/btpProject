@@ -13,10 +13,16 @@ Logger structuré **JSON** pour backend **Bun.js**, avec niveaux, champs par dé
 
 `src/libs/logger/index.ts` :
 
-- `createLogger(config)` avec `config = { level, sink?, baseFields? }`
+- `createLogger(config)` avec `config = { level, formatted?, sink?, baseFields? }`
 - Retourne `{ trace, debug, info, warn, error, child(fields) }`
 
 Niveaux : `trace` < `debug` < `info` < `warn` < `error`.
+
+### Options
+
+- **`formatted: true`** → sortie couleur ANSI pour le terminal (niveau coloré, timestamp, service en gras, fields clé=valeur).
+- **`formatted: false` (défaut)** → JSON brut 1 ligne (production, agrégable, ELK-compatible).
+- **`sink`** → fourni manuellement, prioritaire sur `formatted` (utile pour les tests).
 
 ## Exemple d'import dans un autre projet
 
@@ -36,6 +42,22 @@ Test avec un sink mémoire :
 ```ts
 const out: unknown[] = [];
 const log = createLogger({ level: "debug", sink: (e) => out.push(e) });
+```
+
+Mode formaté (dev, couleur terminal) :
+
+```ts
+const log = createLogger({ level: "debug", formatted: true });
+log.info("server started", { port: 4000 });
+// → 08:00:00.000  INFO   api  server started  port=4000
+```
+
+Mode JSON (production) :
+
+```ts
+const log = createLogger({ level: "info" });
+log.info("server started", { port: 4000 });
+// → {"level":"info","message":"server started","time":"...","fields":{"service":"api","port":4000}}
 ```
 
 ## Notes

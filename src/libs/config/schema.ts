@@ -25,6 +25,14 @@ const envSchema = z.object({
     .default("info"),
   databaseUrl: z.string().url().min(1, "DATABASE_URL est requis"),
   redisUrl: z.string().url().min(1, "REDIS_URL est requis"),
+  corsOrigins: z.string().default("http://localhost:3000"),
+  trustProxy: z
+    .enum(["true", "false"], { message: "TRUST_PROXY doit être true ou false" })
+    .default("false"),
+  monitoringToken: z.string().default(""),
+  logFormatted: z
+    .enum(["true", "false"], { message: "LOG_FORMATTED doit être true ou false" })
+    .default("false"),
 });
 
 type ParsedConfig = {
@@ -34,15 +42,23 @@ type ParsedConfig = {
   logLevel: "trace" | "debug" | "info" | "warn" | "error";
   databaseUrl: string;
   redisUrl: string;
+  corsOrigins: string;
+  trustProxy: "true" | "false";
+  monitoringToken: string;
+  logFormatted: "true" | "false";
 };
 
 function toConfig(parsed: ParsedConfig): AppConfig {
   return {
     env: parsed.app,
     server: { host: parsed.host, port: parsed.port },
-    log: { level: parsed.logLevel },
+    log: { level: parsed.logLevel, formatted: parsed.logFormatted === "true" },
     db: { url: parsed.databaseUrl },
     redis: { url: parsed.redisUrl },
+    corsOrigins: parsed.corsOrigins.split(",").map((o) => o.trim()).filter(Boolean),
+    trustProxy: parsed.trustProxy === "true",
+    monitoringToken: parsed.monitoringToken,
+    logFormatted: parsed.logFormatted === "true",
   };
 }
 
@@ -62,6 +78,10 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         logLevel: raw.LOG_LEVEL,
         databaseUrl: raw.DATABASE_URL,
         redisUrl: raw.REDIS_URL,
+        corsOrigins: raw.CORS_ORIGINS,
+        trustProxy: raw.TRUST_PROXY,
+        monitoringToken: raw.MONITORING_TOKEN,
+        logFormatted: raw.LOG_FORMATTED,
       });
       return toConfig(parsed);
     },

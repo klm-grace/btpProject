@@ -35,6 +35,8 @@ declare global {
     sink?: LogSink;
     defaultSink?: LogSink;
     baseFields?: Record<string, unknown>;
+    /** true = sortie formatée couleur (terminal) ; false/absent = JSON brut (production). */
+    formatted?: boolean;
   }
 
   // ---------------------------------------------------------------------------
@@ -80,6 +82,7 @@ declare global {
     };
     log: {
       level: LogLevel;
+      formatted: boolean;
     };
     db: {
       url: string;
@@ -87,6 +90,14 @@ declare global {
     redis: {
       url: string;
     };
+    /** Liste blanche d'origines CORS (séparées par virgules dans l'env). */
+    corsOrigins: string[];
+    /** true si derrière un reverse proxy (X-Forwarded-For). */
+    trustProxy: boolean;
+    /** Token secret pour les endpoints de monitoring (health détaillé). Vide = accès bloqué. */
+    monitoringToken: string;
+    /** true = logger formaté couleur (terminal) ; false = JSON brut (production). */
+    logFormatted: boolean;
   }
 
   interface EnvSchemaResult<TOutput = AppConfig> {

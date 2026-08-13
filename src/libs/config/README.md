@@ -17,9 +17,6 @@ Documente, valide et saine les variables d'environnement d'un backend **Bun.js**
 - `createConfig()` → `{ parse(raw) → AppConfig, validate(raw) → {ok,data}|{ok:false,error} }`
 - `parseUrl(raw)` → `URL` (parse sans réseau)
 
-`RawEnv = Record<string, string | undefined>` ;
-`AppConfig` = `{ env, server{host,port}, log{level}, db{url}, redis{url} }`.
-
 ## Variables attendues
 
 | Variable | Défaut | Rôle |
@@ -30,6 +27,10 @@ Documente, valide et saine les variables d'environnement d'un backend **Bun.js**
 | `LOG_LEVEL` | `info` | `trace \| debug \| info \| warn \| error` |
 | `DATABASE_URL` | — (requis) | URL PostgreSQL (`Bun.sql`) |
 | `REDIS_URL` | — (requis) | URL Redis (`Bun.redis`) |
+| `CORS_ORIGINS` | `http://localhost:3000` | Liste blanche CORS (virgule) |
+| `TRUST_PROXY` | `false` | Trusted proxy (X-Forwarded-For) |
+| `MONITORING_TOKEN` | `""` | Token pour health détaillé |
+| `LOG_FORMATTED` | `false` | Logger couleur (dev) vs JSON brut (prod) |
 
 Le contrat dev/prod : **mêmes noms de variables, valeurs différentes**.
 
@@ -41,17 +42,9 @@ import { createConfig } from "./src/libs/config/index.ts";
 const cfg = createConfig().parse(process.env); // l'app injecte l'env
 ```
 
-```ts
-// Usage pur / test sans process.env
-const cfg = createConfig().parse({
-  NODE_ENV: "test",
-  DATABASE_URL: "postgres://u:p@127.0.0.1:5432/t",
-  REDIS_URL: "redis://127.0.0.1:6379",
-});
-```
-
 ## Notes
 
 - Dépend de `zod` uniquement.
 - **Pas** de `process.env` dans la bibliothèque ; **aucun** port ouvert ; pas d'effet de bord à l'import.
+- `AppConfig` inclut : `env`, `server{host,port}`, `log{level,formatted}`, `db{url}`, `redis{url}`, `corsOrigins[]`, `trustProxy`, `monitoringToken`, `logFormatted`.
 - Extractible en package sans réécriture.

@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const config = createConfig().parse(process.env);
-const log = createLogger({ level: config.log.level, baseFields: { service: "seed" } });
+const log = createLogger({ level: config.log.level, formatted: config.env === "development", baseFields: { service: "seed" } });
 
 // Sécurité : refuser le seed en production sauf si SEED_ADMIN_PASSWORD est défini.
 if (config.env === "production") {

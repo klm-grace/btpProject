@@ -85,4 +85,58 @@ describe("logger", () => {
     expect(parsed.level).toBe("error");
     expect(parsed.message).toBe("boom");
   });
+
+  // ── Formatted sink ──────────────────────────────────────────────────────
+
+  it("formatted: true sélectionne le formattedSink quand aucun sink custom", () => {
+    // Sans sink custom, formatted=true → formattedSink (couleur, pas JSON brut)
+    const origLog = console.log;
+    const origErr = console.error;
+    const allOutput: string[] = [];
+    console.log = (...args: unknown[]) => allOutput.push(String(args[0]));
+    console.error = (...args: unknown[]) => allOutput.push(String(args[0]));
+    try {
+      const logger = createLogger({ level: "trace", formatted: true });
+      logger.info("hello");
+      logger.error("boom");
+    } finally {
+      console.log = origLog;
+      console.error = origErr;
+    }
+    // Les lignes ne contiennent pas de JSON brut (pas de braces au début)
+    expect(allOutput.length).toBeGreaterThanOrEqual(2);
+    expect(allOutput.some((l) => l.includes("INFO ") && l.includes("hello"))).toBe(true);
+    expect(allOutput.some((l) => l.includes("ERROR") && l.includes("boom"))).toBe(true);
+  });
+
+  it("formatted: true avec sink custom → le sink custom est prioritaire", () => {
+    const entries: LogEntry[] = [];
+    const logger = createLogger({ level: "trace", formatted: true, sink: (e) => entries.push(e) });
+    logger.info("test");
+    // Le sink custom est utilisé, pas le formattedSink
+    expect(entries.length).toBe(1);
+    expect(entries[0]!.level).toBe("info");
+    expect(entries[0]!.message).toBe("test");
+  });
+
+  it("formatted sink affiche le service des baseFields", () => {
+    const origLog = console.log;
+    const logs: string[] = [];
+    console.log = (...args: unknown[]) => logs.push(String(args[0]));
+    try {
+      const logger = createLogger({ level: "trace", formatted: true, baseFields: { service: "api" } });
+      logger.info("started");
+    } finally {
+      console.log = origLog;
+    }
+    expect(logs.some((l) => l.includes("api"))).toBe(true);
+  });
+
+  it("formatted: false/absent utilise le sink JSON brut", () => {
+    const entries: LogEntry[] = [];
+    const logger = createLogger({ level: "trace", formatted: false, sink: (e) => entries.push(e) });
+    logger.info("test");
+    expect(entries.length).toBe(1);
+    expect(entries[0]!.level).toBe("info");
+  });
 });
