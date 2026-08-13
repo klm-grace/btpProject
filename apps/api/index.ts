@@ -47,6 +47,15 @@ const health = createHealthChecker({ db, redis });
 const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 Mo
 const REQUEST_TIMEOUT_MS = 10_000;
 
+/** Vérifie le Content-Length de manière sécurisée (rejet si NaN ou > max). */
+function isBodyTooLarge(req: Request): boolean {
+  const raw = req.headers.get("content-length");
+  if (raw === null) return false; // pas de Content-Length → le runtime gère
+  const len = Number(raw);
+  if (!Number.isFinite(len) || len < 0) return true; // header malformé → rejeter
+  return len > MAX_BODY_BYTES;
+}
+
 // ---------------------------------------------------------------------------
 // Routes (bibliothèque router)
 // ---------------------------------------------------------------------------
@@ -74,14 +83,19 @@ router.get("/api/ready", async (_req, ctx) => {
 // ---------------------------------------------------------------------------
 
 async function fetchHandler(req: Request): Promise<Response> {
-  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
+  // x-request-id client validé (format simple, longueur limitée) sinon UUID
+  const clientRequestId = req.headers.get("x-request-id");
+  const requestId =
+    clientRequestId && /^[a-zA-Z0-9_-]{1,64}$/.test(clientRequestId)
+      ? clientRequestId
+      : crypto.randomUUID();
   const t0 = performance.now();
   const reqLog = log.child({ requestId, method: req.method, path: new URL(req.url).pathname });
 
-  // Body size limit
-  const contentLength = Number(req.headers.get("content-length") ?? "0");
-  if (contentLength > MAX_BODY_BYTES) {
-    reqLog.warn("body too large", { size: contentLength });
+  // Body size limit — vérification applicative (défense en profondeur)
+  // Le vrai garde-fou est maxRequestBodySize dans Bun.serve() ci-dessous.
+  if (isBodyTooLarge(req)) {
+    reqLog.warn("body too large or malformed Content-Length");
     return jsonErrorResponse(
       { code: "payload_too_large", message: "Request body too large", requestId },
       413,
@@ -142,8 +156,9 @@ async function fetchHandler(req: Request): Promise<Response> {
 }
 
 function withRequestId(headers: Headers, requestId: string): Headers {
+  // Écrase toujours : le requestId a déjà été validé (ou généré) dans fetchHandler.
   const h = new Headers(headers);
-  if (!h.get("x-request-id")) h.set("x-request-id", requestId);
+  h.set("x-request-id", requestId);
   return h;
 }
 
@@ -160,6 +175,9 @@ const server = Bun.serve({
   hostname: config.server.host,
   port: config.server.port,
   fetch: fetchHandler,
+  // Garde-fou runtime : rejette les bodies > 1 Mo AVANT même d'atteindre le handler.
+  // Ligne de défense principale (le contrôle applicatif est une défense en profondeur).
+  maxRequestBodySize: MAX_BODY_BYTES,
   // Timeout de connexion/idle au niveau Bun
   idleTimeout: 60,
 });

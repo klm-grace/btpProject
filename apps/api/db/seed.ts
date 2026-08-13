@@ -6,6 +6,16 @@ import { resolve } from "node:path";
 
 const config = createConfig().parse(process.env);
 const log = createLogger({ level: config.log.level, baseFields: { service: "seed" } });
+
+// Sécurité : refuser le seed en production sauf si SEED_ADMIN_PASSWORD est défini.
+if (config.env === "production") {
+  const password = process.env.SEED_ADMIN_PASSWORD;
+  if (!password) {
+    log.error("SEED_ADMIN_PASSWORD is required in production");
+    process.exit(1);
+  }
+}
+
 const db = createDb({ url: config.db.url });
 
 try {
@@ -21,8 +31,14 @@ try {
   });
   log.info("roles and permissions seeded");
 
-  // 2. Insérer l'utilisateur admin (mot de passe : admin1234 en dev)
-  const passwordHash = await Bun.password.hash("admin1234", "argon2id");
+  // 2. Insérer l'utilisateur admin
+  //    En dev : mot de passe "admin1234" (par défaut)
+  //    En prod : SEED_ADMIN_PASSWORD obligatoire
+  const adminPassword = config.env === "production"
+    ? process.env.SEED_ADMIN_PASSWORD!
+    : process.env.SEED_ADMIN_PASSWORD ?? "admin1234";
+  const passwordHash = await Bun.password.hash(adminPassword, "argon2id");
+
   await db.sql`
     INSERT INTO users (id, email, password_hash, first_name, last_name, status)
     VALUES (

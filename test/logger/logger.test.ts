@@ -49,6 +49,30 @@ describe("logger", () => {
     expect(Object.keys(entries[0]!.fields ?? {})).toEqual(["code"]);
   });
 
+  it("redacte automatiquement les champs sensibles", () => {
+    const { logger, entries } = capture();
+    logger.error("login failed", {
+      password: "hunter2",
+      token: "abc123",
+      user: { email: "a@b.c", mfa_code: "123456" },
+    });
+    const fields = entries[0]!.fields ?? {};
+    expect(fields["password"]).toBe("[REDACTED]");
+    expect(fields["token"]).toBe("[REDACTED]");
+    expect(fields["user"]).toEqual({ email: "a@b.c", mfa_code: "[REDACTED]" });
+  });
+
+  it("redacte les champs sensibles dans les child", () => {
+    const { logger, entries } = capture();
+    const child = logger.child({ requestId: "r1" });
+    child.info("auth", { session_token: "s3cr3t", ok: true });
+    expect(entries[0]!.fields).toEqual({
+      requestId: "r1",
+      session_token: "[REDACTED]",
+      ok: true,
+    });
+  });
+
   it("le sink produit du JSON valide", () => {
     const lines: string[] = [];
     const logger = createLogger({

@@ -73,9 +73,13 @@ export function createMigrations(config: MigrationsConfig): Migrations {
     },
 
     async down(n = 1): Promise<MigrationResult> {
+      if (!Number.isInteger(n) || n < 1) {
+        throw new Error("down(n) : n doit être un entier positif");
+      }
       await ensureMigrationsTable(db);
       const rows = await db.sql.unsafe<{ name: string; id: number }>(
-        `SELECT id, name FROM _migrations ORDER BY id DESC LIMIT ${n}`
+        `SELECT id, name FROM _migrations ORDER BY id DESC LIMIT $1`,
+        [n],
       );
 
       if (rows.length === 0) {

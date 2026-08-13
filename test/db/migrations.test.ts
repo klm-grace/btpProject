@@ -131,4 +131,18 @@ describe("migrations", () => {
     expect(result.names).toEqual([]);
     await testDb.close();
   });
+
+  it("down(n) rejette les valeurs invalides (n<1, non entier)", async () => {
+    const cfg = createConfig().parse(env);
+    const testDb = createDb({ url: cfg.db.url });
+    const migrations = createMigrations({
+      db: testDb,
+      migrationsDir: resolve(import.meta.dir, "../../migrations"),
+    });
+    // Ces appels échouent à la validation AVANT de toucher la base.
+    await expect(migrations.down(0)).rejects.toThrow(/entier positif/);
+    await expect(migrations.down(-1)).rejects.toThrow(/entier positif/);
+    await expect(migrations.down(1.5)).rejects.toThrow(/entier positif/);
+    await testDb.close();
+  });
 });

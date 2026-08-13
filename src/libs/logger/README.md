@@ -42,4 +42,8 @@ const log = createLogger({ level: "debug", sink: (e) => out.push(e) });
 
 - **Pas** de `process.env` ; **aucun** port ; pas d'effet de bord à l'import.
 - Ne loggue rien d'autre que `fields` fournis — pas de mot de passe/token implicite.
+- **Redaction automatique** : les valeurs des clés `password`, `token`, `secret`,
+  `authorization`, `mfa_code`, `api_key`, `session_token`, etc. (y compris imbriquées
+  dans des objets) sont remplacées par `[REDACTED]` avant l'écriture. Défense en
+  profondeur — la discipline manuelle reste requise (ne jamais logger de secret).
 - Extractible en package sans réécriture.

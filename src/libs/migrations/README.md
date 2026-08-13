@@ -57,4 +57,6 @@ Les fichiers `.sql` sont triés par nom (ordre lexicographique). La table `_migr
 - **Pas** de `process.env` ; **aucun** port ; pas d'effet de bord à l'import.
 - Chaque migration s'exécute dans une transaction PostgreSQL.
 - Les fichiers `down_<nom>.sql` (optionnels) permettent le rollback.
+- **Sécurité** : `down(n)` valide `n` (`Number.isInteger` et `n >= 1`) et passe le
+  `LIMIT` en paramètre bindé — jamais de concaténation SQL.
 - Extractible en package sans réécriture.
