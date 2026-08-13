@@ -1,7 +1,7 @@
 meta {
-  name: Login admin → cookie sid (nécessaire pour les tests suivants)
+  name: Login admin → cookie sid + csrf_token
   type: http
-  seq: 3
+  seq: 1
 }
 
 post {
@@ -24,7 +24,8 @@ body:json {
 assert {
   res.status: eq 200
   res.body.success: eq true
-  res.body.data.email: eq admin@btp-dev.local
+  res.headers['x-csrf-token']: isDefined
+  res.headers['set-cookie']: isDefined
 }
 
 script:post-response {

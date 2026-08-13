@@ -1,0 +1,17 @@
+meta {
+  name: Mutation admin sans token CSRF → 403
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/api/auth/mfa/setup
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 403
+  res.body.success: eq false
+  res.body.error.code: eq csrf_invalid
+}

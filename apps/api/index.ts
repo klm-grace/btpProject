@@ -19,6 +19,7 @@ import { formatError } from "@libs/errors";
 import { createSecurityHeaders, createCors, createTrustedProxy, timingSafeEqual } from "@libs/http-security";
 import { createAuth } from "@libs/auth";
 import { createRbac } from "@libs/rbac";
+import { createCsrf } from "@libs/csrf";
 
 // ---------------------------------------------------------------------------
 // Bootstrap : l'app lit l'env et injecte
@@ -85,6 +86,16 @@ const rbac = createRbac(
   { sessionReader, db: db as { sql: { unsafe: typeof db.sql.unsafe } } },
   { cacheTtlMs: config.rbacCacheTtlMinutes * 60_000 },
 );
+
+// ---------------------------------------------------------------------------
+// CSRF : middleware double-submit cookie (exempte login/logout/csrf)
+// ---------------------------------------------------------------------------
+
+const csrf = createCsrf({
+  cookieName: "csrf_token",
+  headerName: "X-CSRF-Token",
+  exemptedPaths: ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf"],
+});
 
 // ---------------------------------------------------------------------------
 // Limites serveur : body size + timeout
@@ -209,11 +220,12 @@ router.post("/api/auth/login", async (req, ctx) => {
   }
 
   const cookie = `sid=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
-  const csrfToken = auth.generateCsrfToken();
+  const csrfToken = csrf.generate();
   const csrfCookie = `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
 
   const res = jsonOk(result.user, { requestId: ctx.requestId });
-  res.headers.set("Set-Cookie", `${cookie}; ${csrfCookie}`);
+  res.headers.append("Set-Cookie", cookie);
+  res.headers.append("Set-Cookie", csrfCookie);
   res.headers.set("X-CSRF-Token", csrfToken);
   return res;
 });
@@ -228,7 +240,8 @@ router.post("/api/auth/logout", async (req, ctx) => {
   await auth.logout(sid);
 
   const res = jsonOk({ loggedOut: true }, { requestId: ctx.requestId });
-  res.headers.set("Set-Cookie", "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+  res.headers.append("Set-Cookie", "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+  res.headers.append("Set-Cookie", "csrf_token=; Path=/; Max-Age=0; SameSite=Strict");
   return res;
 });
 
@@ -237,8 +250,8 @@ router.get("/api/auth/me", rbac.requireAuth, async (_req, ctx) => {
   return jsonOk(ctx.state.user, { requestId: ctx.requestId });
 });
 
-// POST /api/auth/change-password — Changement de mot de passe (middleware requireAuth)
-router.post("/api/auth/change-password", rbac.requireAuth, async (req, ctx) => {
+// POST /api/auth/change-password — Changement de mot de passe (auth + CSRF)
+router.post("/api/auth/change-password", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
   const user = ctx.state.user as { id: string };
 
   let body: Record<string, unknown>;
@@ -296,17 +309,18 @@ router.post("/api/auth/mfa/verify-login", async (req, ctx) => {
   }
 
   const cookie = `sid=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
-  const csrfToken = auth.generateCsrfToken();
+  const csrfToken = csrf.generate();
   const csrfCookie = `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
 
   const res = jsonOk(result.user, { requestId: ctx.requestId });
-  res.headers.set("Set-Cookie", `${cookie}; ${csrfCookie}`);
+  res.headers.append("Set-Cookie", cookie);
+  res.headers.append("Set-Cookie", csrfCookie);
   res.headers.set("X-CSRF-Token", csrfToken);
   return res;
 });
 
-// POST /api/auth/mfa/setup — Initie le setup MFA (middleware requireAuth)
-router.post("/api/auth/mfa/setup", rbac.requireAuth, async (req, ctx) => {
+// POST /api/auth/mfa/setup — Initie le setup MFA (auth + CSRF)
+router.post("/api/auth/mfa/setup", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
   const user = ctx.state.user as { id: string };
 
   try {
@@ -317,8 +331,8 @@ router.post("/api/auth/mfa/setup", rbac.requireAuth, async (req, ctx) => {
   }
 });
 
-// POST /api/auth/mfa/enable — Active MFA (middleware requireAuth)
-router.post("/api/auth/mfa/enable", rbac.requireAuth, async (req, ctx) => {
+// POST /api/auth/mfa/enable — Active MFA (auth + CSRF)
+router.post("/api/auth/mfa/enable", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
   const user = ctx.state.user as { id: string };
 
   let body: Record<string, unknown>;
@@ -341,8 +355,8 @@ router.post("/api/auth/mfa/enable", rbac.requireAuth, async (req, ctx) => {
   return jsonOk({ enabled: true }, { requestId: ctx.requestId });
 });
 
-// POST /api/auth/mfa/disable — Désactive MFA (middleware requireAuth)
-router.post("/api/auth/mfa/disable", rbac.requireAuth, async (req, ctx) => {
+// POST /api/auth/mfa/disable — Désactive MFA (auth + CSRF)
+router.post("/api/auth/mfa/disable", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
   const user = ctx.state.user as { id: string };
 
   let body: Record<string, unknown>;
@@ -367,7 +381,7 @@ router.post("/api/auth/mfa/disable", rbac.requireAuth, async (req, ctx) => {
 
 // GET /api/auth/csrf — Génère un token CSRF (double-submit cookie)
 router.get("/api/auth/csrf", async (_req, ctx) => {
-  const csrfToken = auth.generateCsrfToken();
+  const csrfToken = csrf.generate();
   const res = jsonOk({ csrfToken }, { requestId: ctx.requestId });
   res.headers.set("Set-Cookie", `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`);
   return res;

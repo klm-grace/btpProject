@@ -1,5 +1,5 @@
 import type { AuthUser } from "./types.ts";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 const SESSION_PREFIX = "session:";
 
@@ -143,29 +143,4 @@ export function createSessionStore(deps: {
   }
 
   return { create, verify, destroy, destroyAll };
-}
-
-// ── CSRF (double-submit cookie) ──────────────────────────────────────────────
-
-/**
- * Génère un token CSRF (cryptographiquement sûr).
- * Le cookie csrf_token est HttpOnly=false (le JS lit la valeur),
- * et X-CSRF-Token doit le reproduire exactement.
- */
-export function generateCsrfToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * Vérifie que le token CSRF du header X-CSRF-Token correspond au cookie csrf_token.
- * Comparaison en temps constant (timingSafeEqual de node:crypto).
- */
-export function verifyCsrfToken(cookieValue: string, headerValue: string): boolean {
-  if (!cookieValue || !headerValue) return false;
-  if (cookieValue.length !== headerValue.length) return false;
-
-  const enc = new TextEncoder();
-  return timingSafeEqual(enc.encode(cookieValue), enc.encode(headerValue));
 }

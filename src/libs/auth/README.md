@@ -33,9 +33,9 @@ await auth.disableMfa(userId, code);
 // Change password (révoque toutes les sessions)
 await auth.changePassword(userId, currentPassword, newPassword);
 
-// CSRF (double-submit cookie)
-const csrfToken = auth.generateCsrfToken();
-const ok = auth.verifyCsrfToken(cookieValue, headerValue);
+// CSRF : voir src/libs/csrf (bibliothèque dédiée)
+import { createCsrf } from "../csrf";
+const csrf = createCsrf({ cookieName: "csrf_token", headerName: "X-CSRF-Token" });
 ```
 
 ## Dépendances injectées
@@ -104,7 +104,7 @@ src/libs/auth/
   index.ts        ← createAuth() + exports nommés
   types.ts        ← AuthDeps, AuthConfig, AuthEngine, LoginResult, AuthUser
   password.ts     ← hash/verify (argon2id) + generateToken
-  session.ts      ← createSessionStore (Redis + DB) + CSRF helpers
+  session.ts      ← createSessionStore (Redis + DB)
   brute-force.ts  ← createBruteForceStore (Redis)
   mfa.ts          ← generateSecret, getOtpauthUri, verifyCode (TOTP RFC 6238)
 ```

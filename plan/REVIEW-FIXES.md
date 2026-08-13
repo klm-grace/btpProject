@@ -77,6 +77,32 @@
 
 ---
 
+## Section 7 — CSRF (SECTION 7 TERMINÉE)
+
+### ✅ Corrections APPLIQUÉES
+| # | Correction | Statut |
+|---|---|---|
+| 1 | `Set-Cookie` : deux cookies séparés (`sid` + `csrf_token`) dans **deux headers** `Set-Cookie` (`res.headers.append`), conformément à RFC 6265 (avant : un seul header malformé que les clients parsent mal) | ✅ Fait |
+| 2 | Logout : efface aussi le cookie `csrf_token` | ✅ Fait |
+| 3 | Helpers CSRF extraits de `src/libs/auth` vers la bibliothèque `src/libs/csrf` (réutilisable, middleware par-route) | ✅ Fait |
+
+### ⚠️ Problème connu — MCP `bruno-mcp` : "Unknown error" sur les collections avec scripts
+- **Symptôme** : `run-collection` échoue avec `CLI stderr: Unknown error` pour les
+  collections contenant un `script:post-response` (`bru.setEnvVar`) ou un login avec
+  cookie jar (sections 05, 06, 07). La collection section-04 (sans scripts) passe.
+- **Cause probable** : le MCP ne gère pas correctement la persistance env/cookies
+  entre requêtes, ou le script post-response plante dans l'environnement MCP.
+- **Contournement** : exécuter la collection via la CLI directe
+  `cd bruno/collections && bru run section-XX --env local` (résultats 100% verts).
+- **À revoir** : mise à jour du package `bruno-mcp` ou configuration MCP.
+
+### ⏳ Rappels pour les prochaines sections
+- Toute nouvelle **mutation admin** (CRUD portfolio/contenus/leads, sections 10-12)
+  doit être protégée par `rbac.requireAuth` + `csrf.middleware`.
+- `GET /api/auth/csrf` reste le moyen pour le frontend de récupérer un token frais.
+
+---
+
 ## Perf — optimisations non urgentes (à faire quand pertinent)
 
 ### Pré-trier les routes une seule fois

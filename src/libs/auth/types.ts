@@ -102,8 +102,4 @@ export interface AuthEngine {
   verifyMfa(userId: string, code: string): Promise<boolean>;
   enableMfa(userId: string, code: string): Promise<{ ok: boolean; error?: string }>;
   disableMfa(userId: string, code: string): Promise<{ ok: boolean; error?: string }>;
-  /** Token CSRF pour le double-submit cookie (nouveau à chaque appel). */
-  generateCsrfToken(): string;
-  /** Vérifie que le token CSRF du header X-CSRF-Token correspond au cookie csrf_token. */
-  verifyCsrfToken(cookieValue: string, headerValue: string): boolean;
 }

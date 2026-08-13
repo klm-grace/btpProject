@@ -1,0 +1,20 @@
+meta {
+  name: Mutation admin avec token CSRF valide → 200 (token auto-capturé par le login)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/api/auth/mfa/setup
+  body: none
+  auth: none
+}
+
+headers {
+  X-CSRF-Token: {{csrf_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}

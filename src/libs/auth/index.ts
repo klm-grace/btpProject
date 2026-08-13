@@ -5,7 +5,7 @@
  * Pas de JWT, cookies HttpOnly/Secure/SameSite=Strict.
  * MFA TOTP (RFC 6238) obligatoire pour admin.
  * Protection brute-force via Redis.
- * CSRF : double-submit cookie (cookie HttpOnly=false + header X-CSRF-Token).
+ * CSRF : géré par la bibliothèque dédiée src/libs/csrf (double-submit cookie).
  *
  * Aucun process.env, aucune port, extraction possible.
  */
@@ -15,7 +15,7 @@ import type {
   LoginResult, AuthUser, MfaSetupResult,
 } from "./types.ts";
 import { defaultHasher, generateToken } from "./password.ts";
-import { createSessionStore, generateCsrfToken, verifyCsrfToken } from "./session.ts";
+import { createSessionStore } from "./session.ts";
 import { createBruteForceStore } from "./brute-force.ts";
 import { generateSecret, getOtpauthUri, verifyCode as totpVerify } from "./mfa.ts";
 
@@ -283,8 +283,6 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     return { ok: true };
   }
 
-  // ── CSRF ───────────────────────────────────────────────────────────────
-
   return {
     login,
     completeMfaLogin,
@@ -295,10 +293,7 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     verifyMfa,
     enableMfa,
     disableMfa,
-    generateCsrfToken,
-    verifyCsrfToken,
   };
 }
 
-export { generateCsrfToken, verifyCsrfToken } from "./session.ts";
 export { generateSecret, getOtpauthUri, verifyCode as verifyTotpCode } from "./mfa.ts";
