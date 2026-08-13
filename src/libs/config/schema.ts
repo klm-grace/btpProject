@@ -38,6 +38,7 @@ const envSchema = z.object({
   mfaIssuer: z.string().default("BTP Project"),
   bruteForceMaxAttempts: z.coerce.number().int().min(1).max(100).default(5),
   bruteForceLockoutHours: z.coerce.number().int().min(1).max(48).default(1),
+  rbacCacheTtlMinutes: z.coerce.number().int().min(0).max(1440).default(5),
 }).refine(
   (data) => data.app !== "production" || data.sessionSecret.length >= 32,
   {
@@ -62,6 +63,7 @@ type ParsedConfig = {
   mfaIssuer: string;
   bruteForceMaxAttempts: number;
   bruteForceLockoutHours: number;
+  rbacCacheTtlMinutes: number;
 };
 
 function toConfig(parsed: ParsedConfig): AppConfig {
@@ -80,6 +82,7 @@ function toConfig(parsed: ParsedConfig): AppConfig {
     mfaIssuer: parsed.mfaIssuer,
     bruteForceMaxAttempts: parsed.bruteForceMaxAttempts,
     bruteForceLockoutHours: parsed.bruteForceLockoutHours,
+    rbacCacheTtlMinutes: parsed.rbacCacheTtlMinutes,
   };
 }
 
@@ -108,6 +111,7 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         mfaIssuer: raw.MFA_ISSUER,
         bruteForceMaxAttempts: raw.BRUTE_FORCE_MAX_ATTEMPTS,
         bruteForceLockoutHours: raw.BRUTE_FORCE_LOCKOUT_HOURS,
+        rbacCacheTtlMinutes: raw.RBAC_CACHE_TTL_MINUTES,
       });
       return toConfig(parsed);
     },

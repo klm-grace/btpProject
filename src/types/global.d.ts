@@ -108,6 +108,8 @@ declare global {
     bruteForceMaxAttempts: number;
     /** Durée du lockout en heures. */
     bruteForceLockoutHours: number;
+    /** TTL du cache permissions RBAC en minutes. */
+    rbacCacheTtlMinutes: number;
   }
 
   interface EnvSchemaResult<TOutput = AppConfig> {

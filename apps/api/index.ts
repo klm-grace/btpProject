@@ -18,6 +18,7 @@ import { jsonOk, jsonErrorResponse } from "@libs/http";
 import { formatError } from "@libs/errors";
 import { createSecurityHeaders, createCors, createTrustedProxy, timingSafeEqual } from "@libs/http-security";
 import { createAuth } from "@libs/auth";
+import { createRbac } from "@libs/rbac";
 
 // ---------------------------------------------------------------------------
 // Bootstrap : l'app lit l'env et injecte
@@ -69,6 +70,23 @@ const auth = createAuth(
 );
 
 // ---------------------------------------------------------------------------
+// RBAC : middlewares d'authentification et d'autorisation
+// ---------------------------------------------------------------------------
+
+// Session reader : parsing cookie sid + auth.getSession
+async function sessionReader(req: Request) {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const sid = parseCookie(cookieHeader, "sid");
+  if (!sid) return null;
+  return auth.getSession(sid);
+}
+
+const rbac = createRbac(
+  { sessionReader, db: db as { sql: { unsafe: typeof db.sql.unsafe } } },
+  { cacheTtlMs: config.rbacCacheTtlMinutes * 60_000 },
+);
+
+// ---------------------------------------------------------------------------
 // Limites serveur : body size + timeout
 // ---------------------------------------------------------------------------
 
@@ -95,15 +113,34 @@ router.get("/api/health", async (_req, ctx) => {
   return jsonOk({ ready: true }, { status: 200, requestId: ctx.requestId });
 });
 
-// GET /api/health/detail — endpoint INTERNE (détaillé), protégé par monitoringToken
-router.get("/api/health/detail", async (req, ctx) => {
+// GET /api/health/detail — endpoint INTERNE (détaillé)
+// Double accès : token monitoring OU auth+permission (monitoring.view)
+const requireMonitoringAccess = async (req: Request, ctx: import("@libs/router/types").RouteContext, next: () => Promise<Response>): Promise<Response> => {
+  // Méthode 1 : token monitoring
   const token = req.headers.get("x-monitoring-token");
-  if (!config.monitoringToken || !token || !timingSafeEqual(token, config.monitoringToken)) {
+  if (config.monitoringToken && token && timingSafeEqual(token, config.monitoringToken)) {
+    return next();
+  }
+  // Méthode 2 : session auth + permission
+  const user = await sessionReader(req);
+  if (!user) {
     return jsonErrorResponse(
       { code: "forbidden", message: "Invalid or missing monitoring token" },
       403,
     );
   }
+  ctx.state.user = user;
+  const check = await rbac.checkPermission(user, "monitoring.view");
+  if (!check.allowed) {
+    return jsonErrorResponse(
+      { code: "forbidden", message: "Forbidden" },
+      403,
+    );
+  }
+  return next();
+};
+
+router.get("/api/health/detail", requireMonitoringAccess, async (req, ctx) => {
   const report = await health.check();
   const status = report.status === "ok" || report.status === "degraded" ? 200 : 503;
   return jsonOk(report, { status, requestId: ctx.requestId });
@@ -195,34 +232,14 @@ router.post("/api/auth/logout", async (req, ctx) => {
   return res;
 });
 
-// GET /api/auth/me — Profil utilisateur (vérifie session)
-router.get("/api/auth/me", async (req, ctx) => {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const sid = parseCookie(cookieHeader, "sid");
-  if (!sid) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
-  }
-
-  const user = await auth.getSession(sid);
-  if (!user) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
-  }
-
-  return jsonOk(user, { requestId: ctx.requestId });
+// GET /api/auth/me — Profil utilisateur (middleware requireAuth)
+router.get("/api/auth/me", rbac.requireAuth, async (_req, ctx) => {
+  return jsonOk(ctx.state.user, { requestId: ctx.requestId });
 });
 
-// POST /api/auth/change-password — Changement de mot de passe
-router.post("/api/auth/change-password", async (req, ctx) => {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const sid = parseCookie(cookieHeader, "sid");
-  if (!sid) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
-  }
-
-  const user = await auth.getSession(sid);
-  if (!user) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
-  }
+// POST /api/auth/change-password — Changement de mot de passe (middleware requireAuth)
+router.post("/api/auth/change-password", rbac.requireAuth, async (req, ctx) => {
+  const user = ctx.state.user as { id: string };
 
   let body: Record<string, unknown>;
   try {
@@ -288,17 +305,9 @@ router.post("/api/auth/mfa/verify-login", async (req, ctx) => {
   return res;
 });
 
-// POST /api/auth/mfa/setup — Initie le setup MFA
-router.post("/api/auth/mfa/setup", async (req, ctx) => {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const sid = parseCookie(cookieHeader, "sid");
-  if (!sid) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
-  }
-  const user = await auth.getSession(sid);
-  if (!user) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
-  }
+// POST /api/auth/mfa/setup — Initie le setup MFA (middleware requireAuth)
+router.post("/api/auth/mfa/setup", rbac.requireAuth, async (req, ctx) => {
+  const user = ctx.state.user as { id: string };
 
   try {
     const setup = await auth.setupMfa(user.id);
@@ -308,17 +317,9 @@ router.post("/api/auth/mfa/setup", async (req, ctx) => {
   }
 });
 
-// POST /api/auth/mfa/enable — Active MFA (vérifie le code TOTP)
-router.post("/api/auth/mfa/enable", async (req, ctx) => {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const sid = parseCookie(cookieHeader, "sid");
-  if (!sid) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
-  }
-  const user = await auth.getSession(sid);
-  if (!user) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
-  }
+// POST /api/auth/mfa/enable — Active MFA (middleware requireAuth)
+router.post("/api/auth/mfa/enable", rbac.requireAuth, async (req, ctx) => {
+  const user = ctx.state.user as { id: string };
 
   let body: Record<string, unknown>;
   try {
@@ -340,17 +341,9 @@ router.post("/api/auth/mfa/enable", async (req, ctx) => {
   return jsonOk({ enabled: true }, { requestId: ctx.requestId });
 });
 
-// POST /api/auth/mfa/disable — Désactive MFA
-router.post("/api/auth/mfa/disable", async (req, ctx) => {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const sid = parseCookie(cookieHeader, "sid");
-  if (!sid) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
-  }
-  const user = await auth.getSession(sid);
-  if (!user) {
-    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
-  }
+// POST /api/auth/mfa/disable — Désactive MFA (middleware requireAuth)
+router.post("/api/auth/mfa/disable", rbac.requireAuth, async (req, ctx) => {
+  const user = ctx.state.user as { id: string };
 
   let body: Record<string, unknown>;
   try {

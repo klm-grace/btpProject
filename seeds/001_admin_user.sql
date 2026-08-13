@@ -3,6 +3,7 @@
 -- Ce fichier est un template SQL ; le hash est inséré par le script seed.ts.
 
 INSERT INTO roles (id, name, description) VALUES
+    ('00000000-0000-0000-0000-000000000000', 'owner', 'Propriétaire du compte'),
     ('00000000-0000-0000-0000-000000000001', 'admin', 'Administrateur système'),
     ('00000000-0000-0000-0000-000000000002', 'editor', 'Éditeur de contenus'),
     ('00000000-0000-0000-0000-000000000003', 'viewer', 'Lecteur seule')
@@ -17,12 +18,18 @@ INSERT INTO permissions (id, name, description) VALUES
     ('00000000-0000-0000-0000-000000000014', 'leads.read', 'Lire les leads'),
     ('00000000-0000-0000-0000-000000000015', 'leads.write', 'Gérer les leads'),
     ('00000000-0000-0000-0000-000000000016', 'media.upload', 'Uploader des médias'),
-    ('00000000-0000-0000-0000-000000000017', 'settings.manage', 'Gérer les paramètres')
+    ('00000000-0000-0000-0000-000000000017', 'settings.manage', 'Gérer les paramètres'),
+    ('00000000-0000-0000-0000-000000000018', 'monitoring.view', 'Voir les détails de santé')
 ON CONFLICT (id) DO NOTHING;
 
 -- Admin a toutes les permissions
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT '00000000-0000-0000-0000-000000000001', id FROM permissions
+ON CONFLICT DO NOTHING;
+
+-- Owner a toutes les permissions (comme admin, non supprimable)
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '00000000-0000-0000-0000-000000000000', id FROM permissions
 ON CONFLICT DO NOTHING;
 
 -- Editor a les permissions de contenu et médias

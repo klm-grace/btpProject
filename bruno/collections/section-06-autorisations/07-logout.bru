@@ -1,0 +1,17 @@
+meta {
+  name: Logout (nettoyage)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{base_url}}/api/auth/logout
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+  res.body.data.loggedOut: eq true
+}

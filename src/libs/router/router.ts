@@ -1,4 +1,4 @@
-import type { HttpMethod, RegisteredRoute, RouteContext, RouteHandler, Router, RouterOptions } from "./types.ts";
+import type { HttpMethod, Middleware, RegisteredRoute, RouteContext, RouteHandler, Router, RouterOptions } from "./types.ts";
 
 const SUPPORTED_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -75,6 +75,7 @@ export function createRouter(options: RouterOptions = {}): Router {
   const maxPathLength = options.maxPathLength ?? 1024;
   const routesByMethod = new Map<HttpMethod, RegisteredRoute[]>();
   for (const m of SUPPORTED_METHODS) routesByMethod.set(m, []);
+  const globalMiddleware: Middleware[] = options.middleware ?? [];
 
   function normalizePath(path: string): string[] | null {
     if (path !== "/" && path.endsWith("/")) {
@@ -84,7 +85,27 @@ export function createRouter(options: RouterOptions = {}): Router {
     return splitPath(path, maxPathLength);
   }
 
-  function register(method: HttpMethod, path: string, handler: RouteHandler): void {
+  function parseRouteArgs(args: (RouteHandler | Middleware)[]): { handler: RouteHandler; middleware: Middleware[] } {
+    if (args.length === 0) {
+      throw new Error("Router: au moins un handler est requis");
+    }
+    const last = args[args.length - 1]!;
+    // Handler = fonction avec 2 paramètres max (req, ctx)
+    if (typeof last !== "function" || last.length > 2) {
+      throw new Error("Router: le dernier argument doit être un handler (req, ctx) => Response");
+    }
+    const handler = last as RouteHandler;
+    const middleware = args.slice(0, -1).map((arg, i) => {
+      if (typeof arg !== "function" || arg.length !== 3) {
+        throw new Error(`Router: l'argument ${i + 1} n'est pas un middleware valide (3 params requis)`);
+      }
+      return arg as Middleware;
+    });
+    return { handler, middleware };
+  }
+
+  function register(method: HttpMethod, path: string, ...args: (RouteHandler | Middleware)[]): void {
+    const { handler, middleware } = parseRouteArgs(args);
     const segments = normalizePath(path);
     if (segments === null) {
       throw new Error(`Router: chemin invalide "${path}"`);
@@ -96,6 +117,7 @@ export function createRouter(options: RouterOptions = {}): Router {
         .map((s, i) => (s.startsWith(":") ? i : -1))
         .filter((i) => i >= 0),
       handler,
+      middleware,
       key: `${method} ${path}`,
     };
 
@@ -162,9 +184,22 @@ export function createRouter(options: RouterOptions = {}): Router {
           method,
           path,
           signal: req.signal,
+          state: {},
         };
         try {
-          return await route.handler(req, ctx);
+          // Exécuter les middlewares (globaux puis route) en séquence, puis le handler.
+          // Chaque middleware peut court-circuiter (Response) ou appeler next().
+          const allMiddleware = [...globalMiddleware, ...route.middleware];
+          let index = 0;
+          const runPipeline = async (): Promise<Response> => {
+            if (index < allMiddleware.length) {
+              const mw = allMiddleware[index]!;
+              index++;
+              return mw(req, ctx, runPipeline);
+            }
+            return route.handler(req, ctx);
+          };
+          return await runPipeline();
         } catch (err) {
           // Si le handler a été interrompu par un abort, on remonte tel quel.
           throw err;
@@ -177,28 +212,32 @@ export function createRouter(options: RouterOptions = {}): Router {
   }
 
   const router: Router = {
-    route: (method, path, handler) => {
-      register(method, path, handler);
+    route: (method, path, ...args) => {
+      register(method, path, ...args);
       return router;
     },
-    get: (path, handler) => {
-      register("GET", path, handler);
+    get: (path, ...args) => {
+      register("GET", path, ...args);
       return router;
     },
-    post: (path, handler) => {
-      register("POST", path, handler);
+    post: (path, ...args) => {
+      register("POST", path, ...args);
       return router;
     },
-    put: (path, handler) => {
-      register("PUT", path, handler);
+    put: (path, ...args) => {
+      register("PUT", path, ...args);
       return router;
     },
-    patch: (path, handler) => {
-      register("PATCH", path, handler);
+    patch: (path, ...args) => {
+      register("PATCH", path, ...args);
       return router;
     },
-    delete: (path, handler) => {
-      register("DELETE", path, handler);
+    delete: (path, ...args) => {
+      register("DELETE", path, ...args);
+      return router;
+    },
+    use: (middleware) => {
+      globalMiddleware.push(middleware);
       return router;
     },
     handle,

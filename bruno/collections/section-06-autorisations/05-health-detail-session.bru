@@ -1,0 +1,17 @@
+meta {
+  name: GET /api/health/detail - accès par session+permission (admin a monitoring.view)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base_url}}/api/health/detail
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+  res.body.data.status: isDefined
+}

@@ -26,13 +26,13 @@ afterAll(async () => {
 });
 
 describe("seeds", () => {
-  it("les rôles (admin, editor, viewer) existent", async () => {
+  it("les rôles (owner, admin, editor, viewer) existent", async () => {
     if (!available || !db) {
       console.warn("[skip] PostgreSQL non disponible");
       return;
     }
     const roles = await db.sql<{ name: string }>`SELECT name FROM roles ORDER BY name`;
-    expect(roles.map((r) => r.name)).toEqual(["admin", "editor", "viewer"]);
+    expect(roles.map((r) => r.name)).toEqual(["admin", "editor", "owner", "viewer"]);
   });
 
   it("les permissions de base existent", async () => {
@@ -41,7 +41,7 @@ describe("seeds", () => {
       return;
     }
     const perms = await db.sql<{ name: string }>`SELECT name FROM permissions ORDER BY name`;
-    expect(perms.length).toBe(8);
+    expect(perms.length).toBe(9);
     expect(perms.map((p) => p.name)).toContain("users.read");
     expect(perms.map((p) => p.name)).toContain("content.write");
   });
