@@ -1,0 +1,19 @@
+meta {
+  name: GET /api/auth/me (session active via cookie jar)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{base_url}}/api/auth/me
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+  res.body.data.email: eq admin@btp-dev.local
+  res.body.data.id: isDefined
+  res.body.data.roles: isDefined
+}

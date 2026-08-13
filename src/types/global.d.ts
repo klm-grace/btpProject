@@ -98,6 +98,16 @@ declare global {
     monitoringToken: string;
     /** true = logger formaté couleur (terminal) ; false = JSON brut (production). */
     logFormatted: boolean;
+    /** Secret pour générer les tokens de session. Requis en prod. */
+    sessionSecret: string;
+    /** Durée de vie de la session en heures. */
+    sessionExpiryHours: number;
+    /** Nom de l'issuer dans les QR codes TOTP. */
+    mfaIssuer: string;
+    /** Tentatives max avant lockout (brute-force). */
+    bruteForceMaxAttempts: number;
+    /** Durée du lockout en heures. */
+    bruteForceLockoutHours: number;
   }
 
   interface EnvSchemaResult<TOutput = AppConfig> {

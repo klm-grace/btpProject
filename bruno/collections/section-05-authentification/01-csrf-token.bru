@@ -1,0 +1,18 @@
+meta {
+  name: CSRF token
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/api/auth/csrf
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+  res.body.data.csrfToken: isDefined
+  res.headers['set-cookie']: isDefined
+}

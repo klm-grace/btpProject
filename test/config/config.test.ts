@@ -21,6 +21,10 @@ describe("config", () => {
     expect(c.log.level).toBe("info");
     expect(c.db.url).toBe(valid.DATABASE_URL!);
     expect(c.redis.url).toBe(valid.REDIS_URL!);
+    expect(c.sessionSecret).toBe("");
+    expect(c.sessionExpiryHours).toBe(24);
+    expect(c.bruteForceMaxAttempts).toBe(5);
+    expect(c.mfaIssuer).toBe("BTP Project");
   });
 
   it("applique les défauts quand absent", () => {
@@ -41,10 +45,25 @@ describe("config", () => {
       DATABASE_URL: "postgres://prod:hidden@db.example.com:5432/prod",
       REDIS_URL: "redis://redis.example.com:6379",
       PORT: "443",
+      SESSION_SECRET: "a".repeat(32),
     });
     expect(prod.env).toBe("production");
     expect(prod.db.url).toContain("db.example.com");
     expect(prod.server.port).toBe(443);
+  });
+
+  it("exige SESSION_SECRET en production", () => {
+    const r = cfg.validate({
+      ...valid,
+      NODE_ENV: "production",
+      SESSION_SECRET: "trop-court",
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("accepte SESSION_SECRET court en dev (défaut si absent)", () => {
+    const r = cfg.validate(valid);
+    expect(r.ok).toBe(true);
   });
 
   it("rejette une DATABASE_URL invalide", () => {

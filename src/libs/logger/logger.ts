@@ -39,6 +39,7 @@ const LEVEL_LABEL: Record<LogLevel, string> = {
 // ── Clés sensibles (redaction automatique) ───────────────────────────────────
 
 const SENSITIVE_KEYS = new Set([
+  // Générique
   "password",
   "passwd",
   "pwd",
@@ -53,11 +54,20 @@ const SENSITIVE_KEYS = new Set([
   "set-cookie",
   "mfa_code",
   "mfa_token",
+  "mfa_secret",
   "totp",
   "api_key",
   "apikey",
   "private_key",
   "password_hash",
+  // Section 5+ : auth spécifiques
+  "sid",
+  "csrf_token",
+  "session_id",
+  "recovery_code",
+  "otp",
+  "otp_code",
+  "mfa_setup_secret",
 ]);
 
 function redact(value: unknown, depth = 0): unknown {

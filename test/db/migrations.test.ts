@@ -28,14 +28,14 @@ afterAll(async () => {
 });
 
 describe("migrations", () => {
-  it("la table _migrations existe et contient 11 entrées", async () => {
+  it("la table _migrations existe et contient 12 entrées", async () => {
     if (!available || !db) {
       console.warn("[skip] PostgreSQL non disponible");
       return;
     }
     const row = await db.queryOne<{ count: number }>`SELECT COUNT(*)::int as count FROM _migrations`;
     expect(row).not.toBeNull();
-    expect(row!.count).toBe(11);
+    expect(row!.count).toBe(12);
   });
 
   it("toutes les tables obligatoires existent", async () => {
@@ -118,7 +118,7 @@ describe("migrations", () => {
       migrationsDir: resolve(import.meta.dir, "../../migrations"),
     });
     const status = await migrations.status();
-    expect(status.length).toBe(11);
+    expect(status.length).toBe(12);
     expect(status.every((s) => s.applied_at !== null)).toBe(true);
     await testDb.close();
   });

@@ -81,6 +81,25 @@ describe("logger", () => {
     expect(fields["user"]).toEqual({ email: "a@b.c", mfa_code: "[REDACTED]" });
   });
 
+  it("redacte les champs auth de la section 5 (sid, csrf_token, mfa_secret, otp)", () => {
+    const { logger, entries } = capture();
+    logger.info("auth", {
+      sid: "token-opaque",
+      csrf_token: "csrf-value",
+      mfa_secret: "BASE32SECRET",
+      otp: "123456",
+      recovery_code: "abc-def",
+      email: "safe@example.com",
+    });
+    const fields = entries[0]!.fields ?? {};
+    expect(fields["sid"]).toBe("[REDACTED]");
+    expect(fields["csrf_token"]).toBe("[REDACTED]");
+    expect(fields["mfa_secret"]).toBe("[REDACTED]");
+    expect(fields["otp"]).toBe("[REDACTED]");
+    expect(fields["recovery_code"]).toBe("[REDACTED]");
+    expect(fields["email"]).toBe("safe@example.com");
+  });
+
   it("redacte les champs sensibles dans les child", () => {
     const { logger, entries } = capture();
     const child = logger.child({ requestId: "r1" });

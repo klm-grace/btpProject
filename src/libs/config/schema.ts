@@ -33,7 +33,18 @@ const envSchema = z.object({
   logFormatted: z
     .enum(["true", "false"], { message: "LOG_FORMATTED doit être true ou false" })
     .default("false"),
-});
+  sessionSecret: z.string().default(""),
+  sessionExpiryHours: z.coerce.number().int().min(1).max(720).default(24),
+  mfaIssuer: z.string().default("BTP Project"),
+  bruteForceMaxAttempts: z.coerce.number().int().min(1).max(100).default(5),
+  bruteForceLockoutHours: z.coerce.number().int().min(1).max(48).default(1),
+}).refine(
+  (data) => data.app !== "production" || data.sessionSecret.length >= 32,
+  {
+    message: "SESSION_SECRET est requis en production (32 caractères min, générer avec: openssl rand -hex 32)",
+    path: ["sessionSecret"],
+  },
+);
 
 type ParsedConfig = {
   app: "development" | "test" | "production";
@@ -46,6 +57,11 @@ type ParsedConfig = {
   trustProxy: "true" | "false";
   monitoringToken: string;
   logFormatted: "true" | "false";
+  sessionSecret: string;
+  sessionExpiryHours: number;
+  mfaIssuer: string;
+  bruteForceMaxAttempts: number;
+  bruteForceLockoutHours: number;
 };
 
 function toConfig(parsed: ParsedConfig): AppConfig {
@@ -59,6 +75,11 @@ function toConfig(parsed: ParsedConfig): AppConfig {
     trustProxy: parsed.trustProxy === "true",
     monitoringToken: parsed.monitoringToken,
     logFormatted: parsed.logFormatted === "true",
+    sessionSecret: parsed.sessionSecret,
+    sessionExpiryHours: parsed.sessionExpiryHours,
+    mfaIssuer: parsed.mfaIssuer,
+    bruteForceMaxAttempts: parsed.bruteForceMaxAttempts,
+    bruteForceLockoutHours: parsed.bruteForceLockoutHours,
   };
 }
 
@@ -82,6 +103,11 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         trustProxy: raw.TRUST_PROXY,
         monitoringToken: raw.MONITORING_TOKEN,
         logFormatted: raw.LOG_FORMATTED,
+        sessionSecret: raw.SESSION_SECRET,
+        sessionExpiryHours: raw.SESSION_EXPIRY_HOURS,
+        mfaIssuer: raw.MFA_ISSUER,
+        bruteForceMaxAttempts: raw.BRUTE_FORCE_MAX_ATTEMPTS,
+        bruteForceLockoutHours: raw.BRUTE_FORCE_LOCKOUT_HOURS,
       });
       return toConfig(parsed);
     },

@@ -17,6 +17,7 @@ import { createRouter } from "@libs/router";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
 import { formatError } from "@libs/errors";
 import { createSecurityHeaders, createCors, createTrustedProxy, timingSafeEqual } from "@libs/http-security";
+import { createAuth } from "@libs/auth";
 
 // ---------------------------------------------------------------------------
 // Bootstrap : l'app lit l'env et injecte
@@ -51,6 +52,21 @@ const cors = createCors({
   credentials: true,
 });
 const trustedProxy = createTrustedProxy({ trustProxy: config.trustProxy });
+
+// ---------------------------------------------------------------------------
+// Auth (bibliothèque injectée, pas de process.env ici)
+// ---------------------------------------------------------------------------
+
+const auth = createAuth(
+  { db, redis },
+  {
+    sessionSecret: config.sessionSecret,
+    sessionExpiryHours: config.sessionExpiryHours,
+    mfaIssuer: config.mfaIssuer,
+    bruteForceMaxAttempts: config.bruteForceMaxAttempts,
+    bruteForceLockoutHours: config.bruteForceLockoutHours,
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Limites serveur : body size + timeout
@@ -103,6 +119,273 @@ router.get("/api/ready", async (_req, ctx) => {
     requestId: ctx.requestId,
   });
 });
+
+// ---------------------------------------------------------------------------
+// Helper : lire le body JSON d'une requête
+// ---------------------------------------------------------------------------
+
+async function readJsonBody(req: Request): Promise<Record<string, unknown>> {
+  try {
+    const text = await req.text();
+    if (!text) return {};
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error("invalid_json_body");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Routes Auth
+// ---------------------------------------------------------------------------
+
+// POST /api/auth/login — Connexion utilisateur
+router.post("/api/auth/login", async (req, ctx) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
+  }
+
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+
+  if (!email || !password) {
+    return jsonErrorResponse({ code: "validation_error", message: "Email and password are required", requestId: ctx.requestId }, 400);
+  }
+
+  const result = await auth.login(email, password, {
+    ip: trustedProxy.getClientIp(req) ?? undefined,
+    userAgent: req.headers.get("user-agent") ?? undefined,
+  });
+
+  if (!result.success) {
+    // Cas spécial MFA : renvoyer le pendingToken (pas une erreur de credentials)
+    if (result.error === "mfa_required" && result.pendingToken) {
+      const res = jsonOk({ mfaRequired: true, pendingToken: result.pendingToken }, {
+        status: 200,
+        requestId: ctx.requestId,
+      });
+      return res;
+    }
+    return jsonErrorResponse({ code: result.error!, message: "Invalid credentials", requestId: ctx.requestId }, 401);
+  }
+
+  const cookie = `sid=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
+  const csrfToken = auth.generateCsrfToken();
+  const csrfCookie = `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
+
+  const res = jsonOk(result.user, { requestId: ctx.requestId });
+  res.headers.set("Set-Cookie", `${cookie}; ${csrfCookie}`);
+  res.headers.set("X-CSRF-Token", csrfToken);
+  return res;
+});
+
+// POST /api/auth/logout — Déconnexion
+router.post("/api/auth/logout", async (req, ctx) => {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const sid = parseCookie(cookieHeader, "sid");
+  if (!sid) {
+    return jsonOk({ loggedOut: true }, { requestId: ctx.requestId });
+  }
+  await auth.logout(sid);
+
+  const res = jsonOk({ loggedOut: true }, { requestId: ctx.requestId });
+  res.headers.set("Set-Cookie", "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+  return res;
+});
+
+// GET /api/auth/me — Profil utilisateur (vérifie session)
+router.get("/api/auth/me", async (req, ctx) => {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const sid = parseCookie(cookieHeader, "sid");
+  if (!sid) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
+  }
+
+  const user = await auth.getSession(sid);
+  if (!user) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
+  }
+
+  return jsonOk(user, { requestId: ctx.requestId });
+});
+
+// POST /api/auth/change-password — Changement de mot de passe
+router.post("/api/auth/change-password", async (req, ctx) => {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const sid = parseCookie(cookieHeader, "sid");
+  if (!sid) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
+  }
+
+  const user = await auth.getSession(sid);
+  if (!user) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
+  }
+
+  const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
+  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+
+  if (!currentPassword || !newPassword) {
+    return jsonErrorResponse({ code: "validation_error", message: "Current and new password are required", requestId: ctx.requestId }, 400);
+  }
+
+  if (newPassword.length < 8) {
+    return jsonErrorResponse({ code: "validation_error", message: "Password must be at least 8 characters", requestId: ctx.requestId }, 400);
+  }
+
+  const result = await auth.changePassword(user.id, currentPassword, newPassword);
+  if (!result.ok) {
+    return jsonErrorResponse({ code: result.error!, message: "Password change failed", requestId: ctx.requestId }, 400);
+  }
+
+  // Le changement de mot de passe invalide toutes les sessions → on supprime le cookie
+  const res = jsonOk({ changed: true }, { requestId: ctx.requestId });
+  res.headers.set("Set-Cookie", "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+  return res;
+});
+
+// POST /api/auth/mfa/verify-login — 2e étape du login quand MFA est activé
+router.post("/api/auth/mfa/verify-login", async (req, ctx) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
+  }
+
+  const pendingToken = typeof body.pendingToken === "string" ? body.pendingToken : "";
+  const code = typeof body.code === "string" ? body.code.trim() : "";
+
+  if (!pendingToken || !code) {
+    return jsonErrorResponse({ code: "validation_error", message: "pendingToken and code are required", requestId: ctx.requestId }, 400);
+  }
+
+  const result = await auth.completeMfaLogin(pendingToken, code, {
+    ip: trustedProxy.getClientIp(req) ?? undefined,
+    userAgent: req.headers.get("user-agent") ?? undefined,
+  });
+
+  if (!result.success) {
+    return jsonErrorResponse({ code: result.error!, message: "Invalid credentials", requestId: ctx.requestId }, 401);
+  }
+
+  const cookie = `sid=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
+  const csrfToken = auth.generateCsrfToken();
+  const csrfCookie = `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
+
+  const res = jsonOk(result.user, { requestId: ctx.requestId });
+  res.headers.set("Set-Cookie", `${cookie}; ${csrfCookie}`);
+  res.headers.set("X-CSRF-Token", csrfToken);
+  return res;
+});
+
+// POST /api/auth/mfa/setup — Initie le setup MFA
+router.post("/api/auth/mfa/setup", async (req, ctx) => {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const sid = parseCookie(cookieHeader, "sid");
+  if (!sid) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
+  }
+  const user = await auth.getSession(sid);
+  if (!user) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
+  }
+
+  try {
+    const setup = await auth.setupMfa(user.id);
+    return jsonOk({ secret: setup.secret, qrCode: setup.qrCodeDataUri }, { requestId: ctx.requestId });
+  } catch (err) {
+    return jsonErrorResponse({ code: "mfa_error", message: (err as Error).message, requestId: ctx.requestId }, 400);
+  }
+});
+
+// POST /api/auth/mfa/enable — Active MFA (vérifie le code TOTP)
+router.post("/api/auth/mfa/enable", async (req, ctx) => {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const sid = parseCookie(cookieHeader, "sid");
+  if (!sid) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
+  }
+  const user = await auth.getSession(sid);
+  if (!user) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
+  }
+
+  const code = typeof body.code === "string" ? body.code.trim() : "";
+  if (!code) {
+    return jsonErrorResponse({ code: "validation_error", message: "TOTP code is required", requestId: ctx.requestId }, 400);
+  }
+
+  const result = await auth.enableMfa(user.id, code);
+  if (!result.ok) {
+    return jsonErrorResponse({ code: result.error!, message: "MFA activation failed", requestId: ctx.requestId }, 400);
+  }
+
+  return jsonOk({ enabled: true }, { requestId: ctx.requestId });
+});
+
+// POST /api/auth/mfa/disable — Désactive MFA
+router.post("/api/auth/mfa/disable", async (req, ctx) => {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const sid = parseCookie(cookieHeader, "sid");
+  if (!sid) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Not authenticated", requestId: ctx.requestId }, 401);
+  }
+  const user = await auth.getSession(sid);
+  if (!user) {
+    return jsonErrorResponse({ code: "unauthorized", message: "Invalid session", requestId: ctx.requestId }, 401);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
+  }
+
+  const code = typeof body.code === "string" ? body.code.trim() : "";
+  if (!code) {
+    return jsonErrorResponse({ code: "validation_error", message: "TOTP code is required", requestId: ctx.requestId }, 400);
+  }
+
+  const result = await auth.disableMfa(user.id, code);
+  if (!result.ok) {
+    return jsonErrorResponse({ code: result.error!, message: "MFA deactivation failed", requestId: ctx.requestId }, 400);
+  }
+
+  return jsonOk({ disabled: true }, { requestId: ctx.requestId });
+});
+
+// GET /api/auth/csrf — Génère un token CSRF (double-submit cookie)
+router.get("/api/auth/csrf", async (_req, ctx) => {
+  const csrfToken = auth.generateCsrfToken();
+  const res = jsonOk({ csrfToken }, { requestId: ctx.requestId });
+  res.headers.set("Set-Cookie", `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`);
+  return res;
+});
+
+// ── Helper : parser un cookie par nom ────────────────────────────────────────
+
+function parseCookie(cookieHeader: string, name: string): string | null {
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]!) : null;
+}
 
 // ---------------------------------------------------------------------------
 // Fetch : composition (middleware + body size + timeout + erreur globale)

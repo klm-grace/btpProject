@@ -62,13 +62,14 @@
 
 ---
 
-## Section 5+ — Auth / Sessions / Logs (À FAIRE AU DÉBUT DE LA SECTION 5)
+## Section 5+ — Auth / Sessions / Logs (SECTION 5 TERMINÉE)
 
 ### Logger : redaction automatique
 - **État** : ✅ DÉJÀ FAIT (`src/libs/logger/logger.ts`), incluant la sérialisation
   des objets `Error` (name/message/stack).
-- **Vérifier** en section 5 que les nouveaux champs sensibles de l'auth
-  (`session_id`, `csrf_token`, `mfa_secret`, `otp`…) sont bien dans `SENSITIVE_KEYS`.
+- **État section 5** : ✅ `SENSITIVE_KEYS` enrichi avec `sid`, `csrf_token`,
+  `session_id`, `recovery_code`, `otp`, `otp_code`, `mfa_setup_secret`,
+  `mfa_secret`. Tests unitaires ajoutés.
 
 ### `x-request-id` : validation de format
 - **État** : ✅ DÉJÀ FAIT (`apps/api/index.ts`).
