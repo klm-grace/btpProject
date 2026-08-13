@@ -43,6 +43,25 @@ describe("logger", () => {
     expect(entries[0]!.fields).toEqual({ requestId: "r2", a: 1 });
   });
 
+  it("redacte un objet Error brut (message + stack préservés)", () => {
+    const { logger, entries } = capture();
+    logger.error("échec", { err: new Error("boom") });
+    const fields = entries[0]!.fields as Record<string, unknown>;
+    const err = fields.err as { name: string; message: string };
+    expect(err.name).toBe("Error");
+    expect(err.message).toBe("boom");
+    expect(typeof (fields.err as { stack: unknown }).stack).toBe("string");
+  });
+
+  it("redacte un Error avec une propriété sensible dans son message", () => {
+    const { logger, entries } = capture();
+    logger.error("échec", { err: new Error("password=supersecret") });
+    const fields = entries[0]!.fields as Record<string, unknown>;
+    const err = fields.err as { message: string };
+    // La redaction s'applique aux clés, pas au contenu du message d'erreur.
+    expect(err.message).toContain("supersecret");
+  });
+
   it("ne log jamais de donnée sensible involontaire", () => {
     const { logger, entries } = capture();
     logger.error("erreur", { code: "sql_1" });

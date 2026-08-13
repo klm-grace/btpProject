@@ -50,13 +50,3 @@ export function jsonPaginated<T>(
     },
   });
 }
-
-/** Headers CORS de base (appliqués par le serveur, pas par les bibliothèques). */
-export function corsHeaders(origin = "*", methods = "GET,POST,PUT,PATCH,DELETE,OPTIONS"): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": methods,
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-Id",
-    "Access-Control-Max-Age": "86400",
-  };
-}

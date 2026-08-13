@@ -16,7 +16,8 @@ Helpers de réponse HTTP JSON standardisée pour backend **Bun.js**.
 - `jsonOk<T>(data, options?)` → `Response`
 - `jsonErrorResponse(details, status)` → `Response`
 - `jsonPaginated<T>(data, page, pageSize, total, options?)` → `Response`
-- `corsHeaders(origin?, methods?)` → `Record<string, string>`
+
+> **CORS** : géré par `@libs/http-security` (`createCors`), plus par cette bibliothèque.
 
 ## Exemple
 

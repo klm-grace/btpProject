@@ -10,18 +10,21 @@ function fakeReq(method = "GET", origin?: string, url = "http://localhost:4000/a
 const ALLOWED_ORIGINS = ["http://localhost:3000", "https://app.example.com"];
 
 describe("cors", () => {
-  it("origine autorisée → headers présents avec allow-origin", () => {
+  it("origine autorisée → headers présents avec allow-origin + Vary: Origin", () => {
     const cors = createCors({ origins: ALLOWED_ORIGINS });
     const result = cors.resolve(fakeReq("GET", "http://localhost:3000"));
     expect(result.allowed).toBe(true);
     expect(result.headers!["Access-Control-Allow-Origin"]).toBe("http://localhost:3000");
     expect(result.headers!["Access-Control-Allow-Methods"]).toContain("GET");
+    expect(result.headers!["Vary"]).toBe("Origin");
   });
 
-  it("origine non autorisée → allowed=false", () => {
+  it("origine non autorisée → allowed=false, PAS de ACAO, Vary présent", () => {
     const cors = createCors({ origins: ALLOWED_ORIGINS });
     const result = cors.resolve(fakeReq("GET", "https://evil.com"));
     expect(result.allowed).toBe(false);
+    expect(result.headers!["Access-Control-Allow-Origin"]).toBeUndefined();
+    expect(result.headers!["Vary"]).toBe("Origin");
   });
 
   it("pas d'origine (curl, server-to-server) → allowed=true, headers=null", () => {

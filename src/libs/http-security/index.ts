@@ -12,6 +12,7 @@
 export { createSecurityHeaders } from "./security-headers.ts";
 export { createCors } from "./cors.ts";
 export { createTrustedProxy } from "./proxy.ts";
+export { timingSafeEqual } from "./timing-safe.ts";
 
 export type {
   SecurityHeadersConfig,

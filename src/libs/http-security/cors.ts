@@ -11,7 +11,10 @@ const DEFAULT_MAX_AGE = 86_400;
  * - `origins` : liste des origines autorisées (pas de wildcard en prod).
  * - Jamais `credentials: true` avec `Access-Control-Allow-Origin: *`.
  * - Gère le preflight OPTIONS automatiquement.
- * - Testable unitairement sur des Request factices, sans serveur.
+ * - Envoie `Vary: Origin` dès que `Access-Control-Allow-Origin` est dynamique
+ *   (liste blanche) — exigence WHATWG/W3C pour éviter les caches HTTP cross-origin.
+ * - Sur origine refusée : ne renvoie PAS `Access-Control-Allow-Origin` du tout
+ *   (`null` est une origine spéciale trop permissive).
  */
 export function createCors(config: CorsConfig) {
   const origins = new Set(config.origins.map((o) => o.replace(/\/$/, "")));
@@ -20,6 +23,9 @@ export function createCors(config: CorsConfig) {
   const exposedHeaders = config.exposedHeaders?.join(", ") ?? DEFAULT_EXPOSED_HEADERS;
   const credentials = config.credentials ?? false;
   const maxAge = config.maxAge ?? DEFAULT_MAX_AGE;
+
+  /** Vary: Origin est requis car ACAO est calculé dynamiquement. */
+  const varyHeaders = { "Vary": "Origin" };
 
   /**
    * Résout l'origine d'une requête et retourne les headers CORS.
@@ -37,13 +43,12 @@ export function createCors(config: CorsConfig) {
     if (!origins.has(normalized)) {
       return {
         allowed: false,
-        headers: {
-          "Access-Control-Allow-Origin": "null",
-        },
+        headers: varyHeaders,
       };
     }
 
     const headers: Record<string, string> = {
+      ...varyHeaders,
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": methods,
       "Access-Control-Allow-Headers": allowedHeaders,
@@ -67,7 +72,7 @@ export function createCors(config: CorsConfig) {
 
     const result = resolve(request);
 
-    // Preflight rejeté → 403
+    // Preflight rejeté → 403, sans ACAO
     if (!result.allowed) {
       return new Response(null, {
         status: 403,

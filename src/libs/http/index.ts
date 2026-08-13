@@ -5,4 +5,4 @@
  */
 
 export type { JsonOkOptions, JsonErrorDetails } from "./http.ts";
-export { jsonOk, jsonErrorResponse, jsonPaginated, corsHeaders } from "./http.ts";
+export { jsonOk, jsonErrorResponse, jsonPaginated } from "./http.ts";

@@ -1,50 +1,77 @@
-# Corrections différées issues de l'audit sécurité/perf
+# Corrections différées issues des audits sécurité/perf
 
 > Ce fichier est le **mémo de suivi** des corrections décidées mais NON implémentées
 > immédiatement (réserve pour les prochaines sections). À LIRE au début de chaque
 > nouvelle section pour appliquer les corrections qui deviennent pertinentes.
 
-## Section 4 — Sécurité HTTP, CORS, proxy (À FAIRE DANS CETTE SECTION)
+---
 
-### CORS : politique stricte, pas de défaut `"*"`
-- **Problème** : `src/libs/http/http.ts` → `corsHeaders(origin = "*", ...)` a une
-  origine par défaut `"*"`. Combiné à `credentials: include` (sessions, section 5),
-  c'est une faille classique (CORS `*` + credentials est interdit par les navigateurs
-  mais révèle une mauvaise config).
-- **Décision** : ne PAS laisser de valeur par défaut permissive. Créer une config
-  CORS injectée (liste blanche d'origines, `methods`, `allowedHeaders`, `credentials`)
-  et passer par `createCors(config)` (bibliothèque `src/libs/cors` ou extension de
-  `src/libs/http`). Le composant `apps/api` lit `CORS_ORIGINS` (séparé par virgules)
-  et l'injecte.
-- **À ne pas oublier** : gérer le preflight `OPTIONS` dans le middleware HTTP, et
-  ne renvoyer `Access-Control-Allow-Credentials: true` que si l'origine est dans la
-  liste blanche.
+## Audit round 2 (2026-08-13) — après section 4
 
-### `/api/health` : restreindre le détail interne
-- **Problème** : `apps/api/index.ts` expose latence/état PG+Redis publiquement.
-- **Décision** : exposer publiquement un `/api/ready` minimal (`{ ready: true|false }`
-  sans détail) ; garder le détail interne de `/api/health` pour un accès interne ou
-  un token de monitoring (header secret, ou restriction réseau au reverse proxy).
-- **Note** : les deux endpoints doivent rester sans auth (liveness standard), mais
-  le **détail** ne doit pas être public.
+### ✅ Corrections APPLIQUÉES (commit à venir)
 
-### Triple vérification : prévoir un middleware body limit réutilisable
-- **Décision** : quand les routes qui lisent le body arrivent (sections 8-9),
-  extraire la vérification `isBodyTooLarge` de `apps/api/index.ts` dans une
-  bibliothèque réutilisable (`src/libs/http` ou `src/libs/body-limit`), testée
-  unitairement, avec `maxRequestBodySize` Bun toujours en garde-fou runtime.
+| # | Correction | Statut |
+|---|---|---|
+| 1 | `bun test` vert sans infra : skip gracieux `security.test.ts` + 2 tests `migrations.test.ts` + script `test:integration` | ✅ Fait |
+| 2 | `Vary: Origin` dans `http-security/cors.ts` + plus de `ACAO: null` sur refus | ✅ Fait |
+| 3 | `corsHeaders()` supprimé de `src/libs/http` (plus importable) | ✅ Fait |
+| 4 | `redact()` sérialise les objets `Error` (`name`, `message`, `stack`) | ✅ Fait |
+| 5 | `timingSafeEqual` (node:crypto) pour le monitoring token — helper réutilisable en section 5 | ✅ Fait |
+| 6 | IPv4 bornée 0-255 + rejet des zéros de tête dans `proxy.ts` | ✅ Fait |
+
+### ⏳ Points DIFFÉRÉS — à appliquer dans les sections indiquées
+
+#### IPv6 : validation RFC complète — **AVANT la section 13**
+- **Problème** : `isValidIp()` dans `src/libs/http-security/proxy.ts` valide IPv6 de
+  façon basique (`^[0-9a-fA-F:]+$` + au moins 3 segments). Les colonnes
+  `audit_logs.ip_address` et `security_events.ip_address` sont typées `INET` en base.
+- **Décision** : implémenter une vraie validation IPv6 (RFC 4291 / IPaddr.js en interne
+  ou regex complète) quand la section 13 (rate limiting / événements de sécurité)
+  écrira dans ces tables. Utiliser aussi ce moment pour valider que les IP écrites
+  passent bien par `isValidIp()`.
+
+#### Logger : nouveaux champs sensibles auth — **AU DÉBUT de la section 5**
+- Vérifier que `session_id`, `csrf_token`, `mfa_secret`, `otp`, `recovery_code`,
+  `refresh_token_hash`… sont dans `SENSITIVE_KEYS` de `src/libs/logger/logger.ts`.
+- **Règle** : toute nouvelle donnée d'auth loggée doit être soit redactée, soit
+  hashée (jamais le token brut).
+
+#### `timingSafeEqual` : généraliser aux futurs tokens — **EN section 5+**
+- Le helper `timingSafeEqual` de `src/libs/http-security/timing-safe.ts` est le
+  **modèle obligatoire** pour toute comparaison de token (API keys, webhooks,
+  sessions, MFA). Ne jamais utiliser `!==` sur un secret.
+- **Important** : le helper compare les longueurs en OCTETS UTF-8 encodés, pas en
+  caractères (sinon RangeError sur unicode). Ne pas « simplifier ».
 
 ---
 
-## Section 5+ — Auth / Sessions / Logs (À FAIRE AVANT/AU DÉBUT DE LA SECTION 5)
+## Section 4 — Sécurité HTTP, CORS, proxy
+
+### ✅ FAIT (commits sections 4 + fixes audit round 2)
+- CORS liste blanche stricte via `createCors(config)` (bibliothèque
+  `src/libs/http-security/cors.ts`) — préflight OPTIONS, `credentials` sécurisé,
+  `Vary: Origin`, pas de `ACAO: null` sur refus.
+- `/api/health` public minimal `{ ready: true }` ; `/api/health/detail` protégé par
+  `x-monitoring-token` (comparaison `timingSafeEqual`, fail-closed si vide).
+- `/api/ready` public minimal (ready + status, sans dependencies).
+- `corsHeaders()` avec défaut `"*"` **supprimée** de `src/libs/http`.
+- Security headers sur toutes les réponses (HSTS, CSP `default-src 'none'`,
+  X-Frame-Options, X-Content-Type-Options, Referrer-Policy).
+- `createTrustedProxy(config)` : dernier élément X-Forwarded-For (jamais le premier),
+  IPv4 strict (0-255), IPv6 basique.
+
+---
+
+## Section 5+ — Auth / Sessions / Logs (À FAIRE AU DÉBUT DE LA SECTION 5)
 
 ### Logger : redaction automatique
-- **État** : ✅ DÉJÀ FAIT dans le fix du 2026-08-13 (`src/libs/logger/logger.ts`).
+- **État** : ✅ DÉJÀ FAIT (`src/libs/logger/logger.ts`), incluant la sérialisation
+  des objets `Error` (name/message/stack).
 - **Vérifier** en section 5 que les nouveaux champs sensibles de l'auth
   (`session_id`, `csrf_token`, `mfa_secret`, `otp`…) sont bien dans `SENSITIVE_KEYS`.
 
 ### `x-request-id` : validation de format
-- **État** : ✅ DÉJÀ FAIT dans le fix du 2026-08-13 (`apps/api/index.ts`).
+- **État** : ✅ DÉJÀ FAIT (`apps/api/index.ts`).
   Regex `^[a-zA-Z0-9_-]{1,64}$`, sinon UUID généré. Ne pas toucher.
 
 ---
@@ -53,9 +80,8 @@
 
 ### Pré-trier les routes une seule fois
 - **Problème** : `src/libs/router/router.ts` trie les routes à chaque `handle()`.
-- **Décision** : ce n'est PAS urgent (peu de routes, O(n log n) sur n≈30).
-  À faire si on dépasse ~50 routes, en pré-trisant à l'enregistrement et en
-  mémorisant l'ordre dans le routeur.
+- **Décision** : PAS urgent (peu de routes, O(n log n) sur n≈30).
+  À faire si on dépasse ~50 routes, en pré-trisant à l'enregistrement.
 
 ### Cache TTL sur `/api/health` et `/api/ready`
 - **Problème** : double ping DB+Redis à chaque appel.
@@ -64,23 +90,6 @@
 
 ### Reconnexion Redis en troupeau (thundering herd)
 - **Problème** : si Redis tombe, chaque requête concurrente tente sa propre
-  reconnexion (`src/libs/redis/redis.ts`, `autoReconnect + if (!connected) connect`).
-- **Décision** : à revoir en section 13 (rate limiting) avec un mécanisme de
-  reconnexion unique / circuit breaker. Pour l'instant pas d'impact (Redis n'est
-  utilisé que pour le ping santé).
-
-### Dégradation gracieuse Redis
-- **Problème** : `get`/`set`/`del` ne sont pas en try/catch ; une panne Redis
-  remonte en 500.
-- **Décision** : à traiter en section 13. Si Redis n'est utilisé qu'en cache
-  (pas pour les sessions), une panne Redis ne doit pas faire tomber l'API.
-  Si utilisé pour les sessions (section 5), un 500 est acceptable MAIS doit être
-  loggé proprement avec un message dédié « Redis indisponible ».
-
----
-
-## Contrat bibliothèques — rappel
-- Aucune bibliothèque ne lit `process.env` (l'app lit et injecte).
-- Aucune bibliothèque n'ouvre de port.
-- Toujours paramétrer les requêtes SQL (même dans les scripts).
-- Ne jamais logguer de donnée sensible (redaction automatique en défense profonde).
+  reconnexion.
+- **Décision** : mutualiser la reconnexion (un seul timer partagé) quand Redis aura
+  des dépendances critiques (sessions en section 5+). Garder la résilience actuelle.

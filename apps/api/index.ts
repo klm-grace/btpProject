@@ -16,7 +16,7 @@ import { createHealthChecker } from "@libs/health";
 import { createRouter } from "@libs/router";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
 import { formatError } from "@libs/errors";
-import { createSecurityHeaders, createCors, createTrustedProxy } from "@libs/http-security";
+import { createSecurityHeaders, createCors, createTrustedProxy, timingSafeEqual } from "@libs/http-security";
 
 // ---------------------------------------------------------------------------
 // Bootstrap : l'app lit l'env et injecte
@@ -82,7 +82,7 @@ router.get("/api/health", async (_req, ctx) => {
 // GET /api/health/detail — endpoint INTERNE (détaillé), protégé par monitoringToken
 router.get("/api/health/detail", async (req, ctx) => {
   const token = req.headers.get("x-monitoring-token");
-  if (!config.monitoringToken || token !== config.monitoringToken) {
+  if (!config.monitoringToken || !token || !timingSafeEqual(token, config.monitoringToken)) {
     return jsonErrorResponse(
       { code: "forbidden", message: "Invalid or missing monitoring token" },
       403,

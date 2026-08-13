@@ -15,6 +15,7 @@
     "api:dev": "bun --watch apps/api/index.ts",
     "api:start": "bun run apps/api/index.ts",
     "test": "bun test",
+    "test:integration": "bun test test/api/ --timeout 15000",
     "typecheck": "bunx tsc --noEmit",
     "build": "bun build apps/api/index.ts --outdir dist --target bun",
     "start": "bun run dist/index.js",

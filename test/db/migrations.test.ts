@@ -107,6 +107,10 @@ describe("migrations", () => {
   });
 
   it("createMigrations retourne une interface valide", async () => {
+    if (!available || !db) {
+      console.warn("[skip] PostgreSQL non disponible");
+      return;
+    }
     const cfg = createConfig().parse(env);
     const testDb = createDb({ url: cfg.db.url });
     const migrations = createMigrations({
@@ -120,6 +124,10 @@ describe("migrations", () => {
   });
 
   it("up() ne réapplique pas les migrations déjà exécutées", async () => {
+    if (!available || !db) {
+      console.warn("[skip] PostgreSQL non disponible");
+      return;
+    }
     const cfg = createConfig().parse(env);
     const testDb = createDb({ url: cfg.db.url });
     const migrations = createMigrations({

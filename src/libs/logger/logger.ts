@@ -63,6 +63,17 @@ const SENSITIVE_KEYS = new Set([
 function redact(value: unknown, depth = 0): unknown {
   if (depth > 10) return value;
   if (value === null || value === undefined) return value;
+
+  // Un Error brut a des propriétés non énumérables → Object.entries renvoie {}.
+  // On le sérialise explicitement pour ne jamais perdre message/stack.
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      ...(value.stack ? { stack: redact(value.stack, depth + 1) } : {}),
+    };
+  }
+
   if (typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((v) => redact(v, depth + 1));
   const out: Record<string, unknown> = {};

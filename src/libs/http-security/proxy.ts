@@ -39,11 +39,26 @@ export function createTrustedProxy(config: TrustedProxyConfig) {
   return { getClientIp };
 }
 
-/** Validation simple d'IPv4/IPv6 (ne couvre pas tous les cas, suffisant pour un header). */
+/**
+ * Validation IPv4 stricte (octets 0-255) + IPv6 basique.
+ *
+ * IPv4 : chaque octet doit être 0-255, pas de zéros de tête autorisés.
+ * IPv6 : validation complète différée en section 13 (colonnes INET).
+ */
 function isValidIp(ip: string): boolean {
-  // IPv4 simple
-  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return true;
-  // IPv6 (contient au moins deux points)
-  if (ip.includes(":")) return true;
+  // IPv4 stricte : 4 octets, chacun 0-255, sans zéros de tête
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (ipv4) {
+    const octets = ipv4.slice(1).map(Number);
+    if (octets.some((o) => o > 255)) return false;
+    // Rejette les zéros de tête ("01.2.3.4" est ambigu)
+    if (ipv4.slice(1).some((part) => part.length > 1 && part.startsWith("0"))) return false;
+    return true;
+  }
+  // IPv6 : présence de deux-points + pas de caractères invalides
+  // (validation RFC complète en section 13)
+  if (ip.includes(":")) {
+    return /^[0-9a-fA-F:]+$/.test(ip) && ip.split(":").length >= 3;
+  }
   return false;
 }

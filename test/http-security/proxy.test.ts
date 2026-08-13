@@ -56,6 +56,48 @@ describe("trusted-proxy", () => {
     expect(ip).toBe("2001:db8::1");
   });
 
+  it("IPv4 avec octet > 255 est rejeté", () => {
+    const proxy = createTrustedProxy({ trustProxy: true });
+    const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "999.999.999.999" }));
+    expect(ip).toBeNull();
+  });
+
+  it("IPv4 avec octet 256 est rejeté", () => {
+    const proxy = createTrustedProxy({ trustProxy: true });
+    const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "192.168.1.256" }));
+    expect(ip).toBeNull();
+  });
+
+  it("IPv4 avec zéros de tête est rejeté", () => {
+    const proxy = createTrustedProxy({ trustProxy: true });
+    const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "01.2.3.4" }));
+    expect(ip).toBeNull();
+  });
+
+  it("IPv4 valide max (255.255.255.255) est accepté", () => {
+    const proxy = createTrustedProxy({ trustProxy: true });
+    const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "255.255.255.255" }));
+    expect(ip).toBe("255.255.255.255");
+  });
+
+  it("IPv4 valide min (0.0.0.0) est accepté", () => {
+    const proxy = createTrustedProxy({ trustProxy: true });
+    const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "0.0.0.0" }));
+    expect(ip).toBe("0.0.0.0");
+  });
+
+  it("chaîne ressemblant à IPv6 mais invalide est rejetée", () => {
+    const proxy = createTrustedProxy({ trustProxy: true });
+    const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "pas:une:ip" }));
+    expect(ip).toBeNull();
+  });
+
+  it("IPv6 avec caractères invalides est rejetée", () => {
+    const proxy = createTrustedProxy({ trustProxy: true });
+    const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "2001:db8::g1" }));
+    expect(ip).toBeNull();
+  });
+
   it("trustProxy=true, header invalide → retourne null", () => {
     const proxy = createTrustedProxy({ trustProxy: true });
     const ip = proxy.getClientIp(fakeReq({ "X-Forwarded-For": "not-an-ip" }));
