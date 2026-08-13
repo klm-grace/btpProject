@@ -8,12 +8,12 @@
  * Les bibliothèques ne lisent JAMAIS process.env.
  */
 
-import { createConfig } from "../../src/libs/config/index.ts";
-import { createDb } from "../../src/libs/db/index.ts";
-import { createRedis } from "../../src/libs/redis/index.ts";
-import { createLogger } from "../../src/libs/logger/index.ts";
-import { createHealthChecker } from "../../src/libs/health/index.ts";
-import { formatError, NotFoundError } from "../../src/libs/errors/index.ts";
+import { createConfig } from "@libs/config";
+import { createDb } from "@libs/db";
+import { createRedis } from "@libs/redis";
+import { createLogger } from "@libs/logger";
+import { createHealthChecker } from "@libs/health";
+import { formatError, NotFoundError } from "@libs/errors";
 
 // ---------------------------------------------------------------------------
 // Bootstrap : l'app lit l'env et injecte
@@ -24,7 +24,7 @@ if (!configResult.ok) {
   console.error(
     JSON.stringify({
       level: "error",
-      message: "Configuration invalide — vérifier .env",
+      message: "Configuration invalide vérifier .env",
       time: new Date().toISOString(),
     }),
   );

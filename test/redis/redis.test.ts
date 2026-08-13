@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { createRedis } from "../../src/libs/redis/index.ts";
-import { createConfig } from "../../src/libs/config/index.ts";
+import { createRedis } from "@libs/redis";
+import { createConfig } from "@libs/config";
 
 /**
  * Tests d'intégration Redis — nécessitent Redis (docker compose).

@@ -1,0 +1,29 @@
+meta {
+  name: Healthcheck — DB et Redis ok
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/health
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq ok
+  res.body.dependencies[0].name: eq postgresql
+  res.body.dependencies[0].status: eq ok
+  res.body.dependencies[1].name: eq redis
+  res.body.dependencies[1].status: eq ok
+}
+
+docs {
+  Vérifie que PostgreSQL et Redis sont opérationnels.
+  Les 11 migrations ont été appliquées, les seeds sont en place.
+}

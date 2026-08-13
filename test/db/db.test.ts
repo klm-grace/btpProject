@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { createDb } from "../../src/libs/db/index.ts";
-import { createConfig } from "../../src/libs/config/index.ts";
+import { createDb } from "@libs/db";
+import { createConfig } from "@libs/config";
 
 /**
  * Tests d'intégration DB — nécessitent PostgreSQL (docker compose).

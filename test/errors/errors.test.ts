@@ -8,7 +8,7 @@ import {
   errorToHttpStatus,
   formatError,
   isHttpError,
-} from "../../src/libs/errors/index.ts";
+} from "@libs/errors";
 
 describe("errors", () => {
   it("AppError porte code + requestId", () => {

@@ -16,7 +16,12 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "paths": {
+      "@libs/*": ["./src/libs/*"],
+      "@app/*": ["./apps/*"],
+      "@test/*": ["./test/*"]
+    }
   },
   "include": ["apps/**/*.ts", "src/libs/**/*.ts", "src/types/**/*.d.ts", "test/**/*.ts"]
 }

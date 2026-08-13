@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createHealthChecker } from "../../src/libs/health/index.ts";
+import { createHealthChecker } from "@libs/health";
 
 describe("health", () => {
   it("retourne ok quand aucune dépendance", async () => {

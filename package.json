@@ -16,7 +16,10 @@
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
     "build": "bun build apps/api/index.ts --outdir dist --target bun",
-    "start": "bun run dist/index.js"
+    "start": "bun run dist/index.js",
+    "db:migrate": "bun run apps/api/db/migrate.ts",
+    "db:seed": "bun run apps/api/db/seed.ts",
+    "db:status": "bun run apps/api/db/status.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"

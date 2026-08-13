@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createLogger } from "../../src/libs/logger/index.ts";
+import { createLogger } from "@libs/logger";
 
 function capture(level: LogLevel = "trace"): {
   logger: Logger;

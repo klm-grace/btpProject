@@ -112,6 +112,10 @@ declare global {
       strings: TemplateStringsArray,
       ...params: unknown[]
     ): Promise<T[]>;
+    /** Exécute du SQL brut (pas de paramètres bindés dans les strings). */
+    unsafe<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+    /** Démarre une transaction. Le callback reçoit un client SQL scope. */
+    begin<T>(fn: (tx: SqlClientLike) => Promise<T>): Promise<T>;
     close(options?: { timeout?: number }): Promise<void>;
     end(options?: { timeout?: number }): Promise<void>;
     connect(): Promise<SqlClientLike>;

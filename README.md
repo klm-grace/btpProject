@@ -69,13 +69,33 @@ bun test
 │   │   ├── redis/
 │   │   ├── logger/
 │   │   ├── health/
-│   │   └── errors/
+│   │   ├── errors/
+│   │   └── migrations/
 │   └── types/        ← Types globaux (declare global)
+├── migrations/       ← Fichiers SQL de migration
+├── seeds/            ← Fichiers SQL de seed
 ├── test/             ← Tests regroupés par domaine
 ├── plan/             ← Plans de section (source de vérité)
 ├── docker-compose.yml
 └── .env.example
 ```
+
+## Alias d'import (TypeScript)
+
+Les imports utilisent des **aliases** (configurés dans `tsconfig.json`) au lieu de chemins relatifs :
+
+| Alias | Cible |
+|-------|-------|
+| `@libs/*` | `src/libs/*` |
+| `@app/*` | `apps/*` |
+| `@test/*` | `test/*` |
+
+```ts
+import { createConfig } from "@libs/config";
+import { createDb } from "@libs/db";
+```
+
+Les imports `./` internes à une bibliothèque restent relatifs (extractibilité en package).
 
 ## Contrat des bibliothèques
 

@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "Section 02 — Base de données et migrations",
+  "type": "collection",
+  "ignore": ["node_modules", ".git"]
+}

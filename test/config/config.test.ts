@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createConfig } from "../../src/libs/config/index.ts";
+import { createConfig } from "@libs/config";
 
 const valid: RawEnv = {
   NODE_ENV: "development",
