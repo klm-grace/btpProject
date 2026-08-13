@@ -88,34 +88,43 @@ async function fetchHandler(req: Request): Promise<Response> {
     );
   }
 
-  // Timeout global
-  const timeoutPromise = new Promise<Response>((resolve) => {
-    setTimeout(() => {
-      reqLog.warn("request timeout");
-      resolve(
-        jsonErrorResponse(
-          { code: "timeout", message: "Request timeout", requestId },
-          504,
-        ),
-      );
-    }, REQUEST_TIMEOUT_MS);
-  });
+  // Timeout + propagation du signal aux handlers
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    reqLog.warn("request timeout");
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await Promise.race([
-      router.handle(new Request(req.url, {
+    const response = await router.handle(
+      new Request(req.url, {
         method: req.method,
         headers: withRequestId(req.headers, requestId),
-        // On ne passe le body que si request n'est pas GET/HEAD
-        ...(req.method !== "GET" && req.method !== "HEAD" ? { body: req.body, duplex: "half" } : {})
-      })),
-      timeoutPromise,
-    ]);
+        signal: controller.signal,
+        ...(req.method !== "GET" && req.method !== "HEAD"
+          ? { body: req.body, duplex: "half" as const }
+          : {}),
+      }),
+    );
     const duration = Math.round(performance.now() - t0);
     reqLog.info("request handled", { status: response.status, duration });
     return withRequestIdHeader(response, requestId);
   } catch (err) {
     const duration = Math.round(performance.now() - t0);
+
+    if (timedOut || controller.signal.aborted) {
+      reqLog.warn("request timeout", { duration });
+      return withRequestIdHeader(
+        jsonErrorResponse(
+          { code: "timeout", message: "Request timeout", requestId },
+          504,
+        ),
+        requestId,
+      );
+    }
+
     const formatted = formatError(err, requestId);
     if (formatted.status >= 500) {
       reqLog.error("unhandled error", { code: formatted.error.code, duration });
@@ -126,6 +135,9 @@ async function fetchHandler(req: Request): Promise<Response> {
       { ...formatted.error, requestId },
       formatted.status,
     );
+  } finally {
+    // Toujours nettoyer le timer, même en cas de succès, d'erreur ou d'abort.
+    clearTimeout(timeoutHandle);
   }
 }
 

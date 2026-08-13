@@ -20,6 +20,13 @@ export interface RouteContext {
   method: HttpMethod;
   /** Chemin d'origine (sans query string). */
   path: string;
+  /**
+   * Signal d'abort lié à la requête (timeout serveur, déconnexion client).
+   * Les handlers peuvent l'écouter via `signal.addEventListener("abort", …)`
+   * ou utiliser `throwIfAborted(signal)` pour vérifier le statut entre
+   * les étapes d'un traitement long.
+   */
+  signal: AbortSignal;
 }
 
 export type RouteHandler = (req: Request, ctx: RouteContext) => Response | Promise<Response>;

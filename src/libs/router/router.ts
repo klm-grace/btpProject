@@ -161,11 +161,12 @@ export function createRouter(options: RouterOptions = {}): Router {
           requestId,
           method,
           path,
+          signal: req.signal,
         };
         try {
           return await route.handler(req, ctx);
         } catch (err) {
-          // Propagation au middleware d'erreur global de l'app.
+          // Si le handler a été interrompu par un abort, on remonte tel quel.
           throw err;
         }
       }
