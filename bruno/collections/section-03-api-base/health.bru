@@ -1,0 +1,27 @@
+meta {
+  name: Healthcheck
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/api/health
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+  res.body.data.status: eq ok
+  res.body.requestId: isDefined
+}
+
+docs {
+  Vérifie que le format JSON standard est respecté : { success, data, requestId }.
+  Vérifie que les dépendances PG et Redis sont opérationnelles.
+}

@@ -29,6 +29,17 @@ Ce fichier documente l'avancement des sections du projet Architecture & BTP.
   - Collection Bruno (2 requêtes)
   - README bibliothèque migrations
 
+- [x] **Section 3 — API de base**
+  - Bibliothèque router (matcher strict, 404/405, params, query, requestId)
+  - Sécurité intégrée (path traversal, double slash, encodage, longueur max)
+  - Bibliothèque http (jsonOk, jsonErrorResponse, jsonPaginated)
+  - Refactor apps/api : middleware requestId, log structuré, body size, timeout
+  - Endpoints GET /api/health, GET /api/ready
+  - 404 JSON propre, 405 avec Allow header
+  - Tests : 14 unitaires router + 7 intégration API (21 tests)
+  - Collection Bruno (4 requêtes avec assertions)
+  - README bibliothèques router + http
+
 - [ ] **Section 2 — Base de données et migrations**
 - [ ] **Section 3 — API de base**
 - [ ] **Section 4 — Sécurité HTTP, CORS et proxy**

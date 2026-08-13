@@ -1,8 +1,8 @@
 /**
  * apps/api — SEUL process qui écoute un port HTTP.
  *
- * Assemble les bibliothèques (config, db, redis, logger, health, errors)
- * et expose GET /health.
+ * Assemble les bibliothèques (config, db, redis, logger, health, errors,
+ * router, http) et expose GET /api/health + GET /api/ready.
  *
  * L'app lit process.env et injecte la config dans les bibliothèques.
  * Les bibliothèques ne lisent JAMAIS process.env.
@@ -13,7 +13,9 @@ import { createDb } from "@libs/db";
 import { createRedis } from "@libs/redis";
 import { createLogger } from "@libs/logger";
 import { createHealthChecker } from "@libs/health";
-import { formatError, NotFoundError } from "@libs/errors";
+import { createRouter } from "@libs/router";
+import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { formatError } from "@libs/errors";
 
 // ---------------------------------------------------------------------------
 // Bootstrap : l'app lit l'env et injecte
@@ -24,7 +26,7 @@ if (!configResult.ok) {
   console.error(
     JSON.stringify({
       level: "error",
-      message: "Configuration invalide vérifier .env",
+      message: "Configuration invalide — vérifier .env",
       time: new Date().toISOString(),
     }),
   );
@@ -39,31 +41,103 @@ const redis = createRedis({ url: config.redis.url });
 const health = createHealthChecker({ db, redis });
 
 // ---------------------------------------------------------------------------
-// Routes
+// Limites serveur : body size + timeout
 // ---------------------------------------------------------------------------
 
-async function handleHealth(_req: Request): Promise<Response> {
-  const report = await health.check();
-  const httpStatus = report.status === "ok" ? 200 : report.status === "degraded" ? 200 : 503;
-  return Response.json(report, { status: httpStatus });
-}
+const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 Mo
+const REQUEST_TIMEOUT_MS = 10_000;
 
-async function router(req: Request): Promise<Response> {
-  const url = new URL(req.url);
+// ---------------------------------------------------------------------------
+// Routes (bibliothèque router)
+// ---------------------------------------------------------------------------
+
+const router = createRouter({ logger: log.child({ component: "router" }) });
+
+router.get("/api/health", async (_req, ctx) => {
+  const report = await health.check();
+  const status = report.status === "ok" || report.status === "degraded" ? 200 : 503;
+  return jsonOk(report, { status, requestId: ctx.requestId });
+});
+
+router.get("/api/ready", async (_req, ctx) => {
+  const report = await health.check();
+  const ready = report.status !== "down";
+  const status = ready ? 200 : 503;
+  return jsonOk({ ready, status: report.status, dependencies: report.dependencies }, {
+    status,
+    requestId: ctx.requestId,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fetch : composition (middleware + body size + timeout + erreur globale)
+// ---------------------------------------------------------------------------
+
+async function fetchHandler(req: Request): Promise<Response> {
+  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
+  const t0 = performance.now();
+  const reqLog = log.child({ requestId, method: req.method, path: new URL(req.url).pathname });
+
+  // Body size limit
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_BODY_BYTES) {
+    reqLog.warn("body too large", { size: contentLength });
+    return jsonErrorResponse(
+      { code: "payload_too_large", message: "Request body too large", requestId },
+      413,
+    );
+  }
+
+  // Timeout global
+  const timeoutPromise = new Promise<Response>((resolve) => {
+    setTimeout(() => {
+      reqLog.warn("request timeout");
+      resolve(
+        jsonErrorResponse(
+          { code: "timeout", message: "Request timeout", requestId },
+          504,
+        ),
+      );
+    }, REQUEST_TIMEOUT_MS);
+  });
 
   try {
-    if (req.method === "GET" && url.pathname === "/health") {
-      return await handleHealth(req);
-    }
-
-    throw new NotFoundError(`Route not found: ${req.method} ${url.pathname}`);
+    const response = await Promise.race([
+      router.handle(new Request(req.url, {
+        method: req.method,
+        headers: withRequestId(req.headers, requestId),
+        // On ne passe le body que si request n'est pas GET/HEAD
+        ...(req.method !== "GET" && req.method !== "HEAD" ? { body: req.body, duplex: "half" } : {})
+      })),
+      timeoutPromise,
+    ]);
+    const duration = Math.round(performance.now() - t0);
+    reqLog.info("request handled", { status: response.status, duration });
+    return withRequestIdHeader(response, requestId);
   } catch (err) {
-    const body = formatError(err);
-    if (body.status >= 500) {
-      log.error("unhandled error", { code: body.error.code });
+    const duration = Math.round(performance.now() - t0);
+    const formatted = formatError(err, requestId);
+    if (formatted.status >= 500) {
+      reqLog.error("unhandled error", { code: formatted.error.code, duration });
+    } else {
+      reqLog.warn("client error", { code: formatted.error.code, status: formatted.status, duration });
     }
-    return Response.json({ error: body.error }, { status: body.status });
+    return jsonErrorResponse(
+      { ...formatted.error, requestId },
+      formatted.status,
+    );
   }
+}
+
+function withRequestId(headers: Headers, requestId: string): Headers {
+  const h = new Headers(headers);
+  if (!h.get("x-request-id")) h.set("x-request-id", requestId);
+  return h;
+}
+
+function withRequestIdHeader(res: Response, requestId: string): Response {
+  res.headers.set("x-request-id", requestId);
+  return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +147,9 @@ async function router(req: Request): Promise<Response> {
 const server = Bun.serve({
   hostname: config.server.host,
   port: config.server.port,
-  fetch: router,
+  fetch: fetchHandler,
+  // Timeout de connexion/idle au niveau Bun
+  idleTimeout: 60,
 });
 
 log.info("API started", {
@@ -94,4 +170,4 @@ async function shutdown(signal: string) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-export { server, config, db, redis, health, log };
+export { server, config, db, redis, health, log, router };

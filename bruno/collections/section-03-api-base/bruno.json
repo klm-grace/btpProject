@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "Section 03 — API de base",
+  "type": "collection",
+  "ignore": ["node_modules", ".git"]
+}

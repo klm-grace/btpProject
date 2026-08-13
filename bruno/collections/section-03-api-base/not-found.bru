@@ -1,0 +1,27 @@
+meta {
+  name: 404 — Route inconnue
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/inexistant
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+assert {
+  res.status: eq 404
+  res.body.success: eq false
+  res.body.error.code: eq not_found
+  res.body.error.requestId: isDefined
+}
+
+docs {
+  Vérifie qu'une route inconnue renvoie un 404 JSON propre.
+  Format : { success: false, error: { code, message, requestId } }.
+}
