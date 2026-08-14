@@ -7,6 +7,7 @@ import type { AppContext } from "../types";
 import { handleHealth, handleReady } from "../handlers/health";
 import { handleLogin, handleLogout, handleGetMe, handleChangePassword, handleGetCsrf } from "../handlers/auth";
 import { handleMfaVerify, handleMfaSetup } from "../handlers/mfa";
+import { handleContactSubmit, handleQuoteSubmit } from "../handlers/public";
 import { sessionMiddleware } from "../middleware/session";
 import { requireMonitoringAccess } from "../middleware/monitoring";
 import { wrapHandler, wrapMiddleware } from "../utils/wrap";
@@ -29,4 +30,8 @@ export function registerRoutes(router: Router, ctx: AppContext) {
   // --- MFA (avec rate-limit strict) ---
   router.post("/api/auth/mfa/setup", wrapMiddleware(ctx.authRateLimitMiddleware), wrapMiddleware(sessionMiddleware), wrapHandler(handleMfaSetup));
   router.post("/api/auth/mfa/verify", wrapMiddleware(ctx.authRateLimitMiddleware), wrapHandler(handleMfaVerify));
+
+  // --- Formulaires publics (sans CSRF, rate-limit IP) ---
+  router.post("/api/public/contact", wrapMiddleware(ctx.publicRateLimitMiddleware), wrapHandler(handleContactSubmit));
+  router.post("/api/public/quote", wrapMiddleware(ctx.publicRateLimitMiddleware), wrapHandler(handleQuoteSubmit));
 }

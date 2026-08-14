@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { startTestApiServer } from "../integration-api";
+import { getTestServer, releaseTestServer } from "../support/server";
 
-let baseUrl: string;
-let stopServer: () => Promise<void>;
+let baseUrl = "";
 let cookies: Record<string, string> = {};
 
 function parseCookies(setCookieHeader: string): Record<string, string> {
@@ -19,14 +18,9 @@ function parseCookies(setCookieHeader: string): Record<string, string> {
   return c;
 }
 
-function cookieStr(c: Record<string, string>): string {
-  return Object.entries(c).map(([k, v]) => `${k}=${v}`).join("; ");
-}
-
 beforeAll(async () => {
-  const api = await startTestApiServer();
-  baseUrl = api.baseUrl;
-  stopServer = api.stop;
+  const server = await getTestServer();
+  baseUrl = server.baseUrl;
 
   const res = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -38,8 +32,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await stopServer();
+  await releaseTestServer();
 });
+
+// ── Section 04 — Sécurité HTTP ───────────────────────────────────────────────
 
 describe("section 04 — sécurité HTTP", () => {
   it("GET /api/health contient HSTS, X-Frame-Options, X-Content-Type-Options", async () => {
@@ -93,6 +89,8 @@ describe("section 04 — sécurité HTTP", () => {
     expect(res.headers.get("x-request-id")).toBeTruthy();
   });
 });
+
+// ── Section 05 — Authentification ────────────────────────────────────────────
 
 describe("section 05 — authentification", () => {
   it("POST /api/auth/login valide → 200 + cookies", async () => {
@@ -173,7 +171,7 @@ describe("section 05 — authentification", () => {
     expect(loginRes.status).toBe(200);
     const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
     const cookieStrVal = Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ");
-    
+
     const meRes = await fetch(`${baseUrl}/api/auth/me`, {
       headers: { Cookie: cookieStrVal },
     });
@@ -223,7 +221,6 @@ describe("section 05 — authentification", () => {
   });
 
   it("POST /api/auth/logout → 200, session révoquée → /me 401", async () => {
-    // Login frais
     const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -247,12 +244,16 @@ describe("section 05 — authentification", () => {
   });
 });
 
+// ── Section 06 — Autorisations ──────────────────────────────────────────────
+
 describe("section 06 — autorisations (RBAC sur routes)", () => {
   it("GET /api/auth/me sans session → 401", async () => {
     const res = await fetch(`${baseUrl}/api/auth/me`);
     expect(res.status).toBe(401);
   });
 });
+
+// ── Section 07 — CSRF ───────────────────────────────────────────────────────
 
 describe("section 07 — CSRF protection sur mutations", () => {
   it("POST /api/auth/login exempté du CSRF → 200 sans token", async () => {
@@ -262,38 +263,23 @@ describe("section 07 — CSRF protection sur mutations", () => {
       body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
     });
     expect(res.status).toBe(200);
+    cookies = parseCookies(res.headers.get("set-cookie") ?? "");
   });
 
   it("POST /api/auth/logout exempté du CSRF → 200", async () => {
-    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
-    });
-    expect(loginRes.status).toBe(200);
-    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
-
     const res = await fetch(`${baseUrl}/api/auth/logout`, {
       method: "POST",
-      headers: { Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ") },
+      headers: { Cookie: Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; ") },
     });
     expect(res.status).toBe(200);
   });
 
   it("POST /api/auth/change-password sans header CSRF → 403", async () => {
-    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
-    });
-    expect(loginRes.status).toBe(200);
-    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
-
     const res = await fetch(`${baseUrl}/api/auth/change-password`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; "),
+        Cookie: Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; "),
       },
       body: JSON.stringify({ currentPassword: "admin1234", newPassword: "Another1!" }),
     });
@@ -301,19 +287,11 @@ describe("section 07 — CSRF protection sur mutations", () => {
   });
 
   it("POST /api/auth/change-password token CSRF invalide → 403", async () => {
-    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
-    });
-    expect(loginRes.status).toBe(200);
-    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
-
     const res = await fetch(`${baseUrl}/api/auth/change-password`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; "),
+        Cookie: Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; "),
         "X-CSRF-Token": "invalid-token",
       },
       body: JSON.stringify({ currentPassword: "admin1234", newPassword: "Another1!" }),
@@ -331,7 +309,6 @@ describe("section 07 — CSRF protection sur mutations", () => {
     });
     expect(loginRes.status).toBe(200);
     const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
-
     const meRes = await fetch(`${baseUrl}/api/auth/me`, {
       headers: { Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ") },
     });

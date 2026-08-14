@@ -13,6 +13,7 @@ import type { Csrf } from "@libs/csrf";
 import type { Cors, SecurityHeaders, TrustedProxy } from "@libs/http-security";
 import type { RateLimiter, RateLimitMiddleware } from "@libs/rate-limit";
 import type { Redis } from "@libs/redis";
+import type { Outbox } from "@libs/outbox";
 
 /**
  * Contexte applicatif injecté dans les handlers et middlewares.
@@ -33,6 +34,8 @@ export interface AppContext {
   rateLimiter: RateLimiter;
   authRateLimiter: RateLimiter;
   authRateLimitMiddleware: RateLimitMiddleware;
+  outbox: Outbox;
+  publicRateLimitMiddleware: RateLimitMiddleware;
 }
 
 /**

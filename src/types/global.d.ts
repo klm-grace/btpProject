@@ -110,6 +110,12 @@ declare global {
     bruteForceLockoutHours: number;
     /** TTL du cache permissions RBAC en minutes. */
     rbacCacheTtlMinutes: number;
+    /** Max requêtes publiques autorisées par fenêtre (par IP). */
+    publicRateLimitMax: number;
+    /** Fenêtre du rate limit public en secondes. */
+    publicRateLimitWindow: number;
+    /** Version actuelle du consentement RGPD. */
+    consentVersion: string;
   }
 
   interface EnvSchemaResult<TOutput = AppConfig> {

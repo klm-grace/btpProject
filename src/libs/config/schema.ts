@@ -39,6 +39,9 @@ const envSchema = z.object({
   bruteForceMaxAttempts: z.coerce.number().int().min(1).max(100).default(5),
   bruteForceLockoutHours: z.coerce.number().int().min(1).max(48).default(1),
   rbacCacheTtlMinutes: z.coerce.number().int().min(0).max(1440).default(5),
+  publicRateLimitMax: z.coerce.number().int().min(1).max(100).default(5),
+  publicRateLimitWindow: z.coerce.number().int().min(10).max(3600).default(300),
+  consentVersion: z.string().default("1.0"),
 }).refine(
   (data) => data.app !== "production" || data.sessionSecret.length >= 32,
   {
@@ -64,6 +67,9 @@ type ParsedConfig = {
   bruteForceMaxAttempts: number;
   bruteForceLockoutHours: number;
   rbacCacheTtlMinutes: number;
+  publicRateLimitMax: number;
+  publicRateLimitWindow: number;
+  consentVersion: string;
 };
 
 function toConfig(parsed: ParsedConfig): AppConfig {
@@ -83,6 +89,9 @@ function toConfig(parsed: ParsedConfig): AppConfig {
     bruteForceMaxAttempts: parsed.bruteForceMaxAttempts,
     bruteForceLockoutHours: parsed.bruteForceLockoutHours,
     rbacCacheTtlMinutes: parsed.rbacCacheTtlMinutes,
+    publicRateLimitMax: parsed.publicRateLimitMax,
+    publicRateLimitWindow: parsed.publicRateLimitWindow,
+    consentVersion: parsed.consentVersion,
   };
 }
 
@@ -112,6 +121,9 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         bruteForceMaxAttempts: raw.BRUTE_FORCE_MAX_ATTEMPTS,
         bruteForceLockoutHours: raw.BRUTE_FORCE_LOCKOUT_HOURS,
         rbacCacheTtlMinutes: raw.RBAC_CACHE_TTL_MINUTES,
+        publicRateLimitMax: raw.PUBLIC_RATE_LIMIT_MAX,
+        publicRateLimitWindow: raw.PUBLIC_RATE_LIMIT_WINDOW,
+        consentVersion: raw.CONSENT_VERSION,
       });
       return toConfig(parsed);
     },

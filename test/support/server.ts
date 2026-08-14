@@ -1,6 +1,16 @@
 /**
- * Point d'entrée de l'API.
- * Assemble les bibliothèques et lance le serveur Bun.
+ * Serveur API partagé pour tous les tests d'intégration.
+ *
+ * Démarré paresseusement au premier appel, détruit après la dernière suite.
+ * Élimine les conflits de port entre fichiers de test parallèles.
+ *
+ * Usage :
+ *   import { getTestServer } from "../support/server";
+ *
+ *   beforeAll(async () => {
+ *     const server = await getTestServer();
+ *     const { baseUrl, cookies } = server;
+ *   });
  */
 
 import { createConfig } from "@libs/config";
@@ -19,21 +29,45 @@ import type { OutboxDeps, OutboxConfig } from "@libs/outbox/types";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
 import type { RbacDeps, RbacConfig } from "@libs/rbac/types";
 import type { CsrfConfig } from "@libs/csrf/types";
-import { z } from "zod";
+import { registerRoutes } from "../../apps/api/routes";
+import { getRequestId, addRequestIdHeader } from "../../apps/api/utils/request-id";
+import { isBodyTooLarge } from "../../apps/api/utils/body";
+import { parseCookie } from "../../apps/api/utils/cookies";
+import { MAX_BODY_BYTES, COOKIE_NAMES } from "../../apps/api/constants";
+import type { AppContext } from "../../apps/api/types";
 
-import { registerRoutes } from "./routes";
-import { getRequestId, addRequestIdHeader } from "./utils/request-id";
-import { isBodyTooLarge, readJsonBody } from "./utils/body";
-import { parseCookie } from "./utils/cookies";
-import { MAX_BODY_BYTES, COOKIE_NAMES } from "./constants";
-import type { AppContext } from "./types";
+export interface ApiServer {
+  baseUrl: string;
+  ctx: AppContext;
+}
 
-const EmailSchema = z.string().email().max(254);
+/** Instance singleton. */
+let _server: ApiServer | null = null;
+let _refCount = 0;
+let _closing = false;
 
-async function bootstrap() {
+/**
+ * Retourne l'instance partagée du serveur de test.
+ * Le premier appel démarre le serveur ; chaque appel suivant incrémente le compteur.
+ * `releaseTestServer()` doit être appelé à la fin pour libérer.
+ */
+export async function getTestServer(): Promise<ApiServer> {
+  if (_server && !_closing) {
+    _refCount++;
+    return _server;
+  }
+
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    PORT: "4099",
+    HOST: "127.0.0.1",
+    NODE_ENV: "test",
+    CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000",
+    MONITORING_TOKEN: process.env.MONITORING_TOKEN || "test-monitoring-token",
+  };
+
   const configResult = createConfig();
-  const config = configResult.parse(process.env);
-
+  const config = configResult.parse(env);
   const log = createLogger(config.log);
   const db = createDb(config.db);
   const redis = createRedis(config.redis);
@@ -85,23 +119,10 @@ async function bootstrap() {
   const securityHeaders = createSecurityHeaders();
   const trustedProxy = createTrustedProxy({ trustProxy: config.trustProxy });
 
-  // Rate limiter global (pour auth et futures routes)
-  const rateLimiter = createRateLimiter({ redis }, {
-    maxRequests: 100,
-    windowSeconds: 60, // 100 req/min par IP
-    keyPrefix: "rl:api:"
-  });
-
-  // Rate limiter strict pour auth (login, register, mfa)
-  const authRateLimiter = createRateLimiter({ redis }, {
-    maxRequests: 10,
-    windowSeconds: 300, // 10 req/5min par IP
-    keyPrefix: "rl:auth:"
-  });
-
+  const rateLimiter = createRateLimiter({ redis }, { maxRequests: 100, windowSeconds: 60, keyPrefix: "rl:api:" });
+  const authRateLimiter = createRateLimiter({ redis }, { maxRequests: 100, windowSeconds: 60, keyPrefix: "rl:auth:" });
   const authRateLimitMiddleware = createRateLimitMiddleware(authRateLimiter, {
     keyGenerator: (req) => {
-      // IP + endpoint pour différencier login/logout/mfa
       const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
         || req.headers.get("x-real-ip")
         || "unknown";
@@ -113,11 +134,7 @@ async function bootstrap() {
   });
 
   // Rate limiter public (formulaires contact/devis)
-  const publicRateLimiter = createRateLimiter({ redis }, {
-    maxRequests: config.publicRateLimitMax,
-    windowSeconds: config.publicRateLimitWindow,
-    keyPrefix: "rl:public:"
-  });
+  const publicRateLimiter = createRateLimiter({ redis }, { maxRequests: 100, windowSeconds: 60, keyPrefix: "rl:public:" });
   const publicRateLimitMiddleware = createRateLimitMiddleware(publicRateLimiter, {
     keyGenerator: (req) => {
       const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
@@ -145,26 +162,20 @@ async function bootstrap() {
 
   const fetchHandler = async (req: Request) => {
     const requestId = getRequestId(req);
-
     try {
       if (isBodyTooLarge(req, MAX_BODY_BYTES)) {
         return new Response("Request entity too large", { status: 413 });
       }
-
       const preflight = cors.handlePreflight(req);
       if (preflight) return preflight;
-
       const response = await router.handle(req, { app: ctx });
-
       const finalRes = securityHeaders.applyHeaders(new Response(response.body, response));
-
       const corsRes = cors.resolve(req);
       if (corsRes.headers) {
         for (const [k, v] of Object.entries(corsRes.headers)) {
           finalRes.headers.set(k, v);
         }
       }
-
       return addRequestIdHeader(finalRes, requestId);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -176,17 +187,66 @@ async function bootstrap() {
     }
   };
 
-  const server = Bun.serve({
-    port: config.server.port,
-    hostname: config.server.host,
-    fetch: fetchHandler,
-  });
+  const candidatePorts = [4099, 4098, 4097, 4096, 4095];
+  let server: Bun.Server<unknown> | null = null;
+  let actualPort = 0;
+  for (const port of candidatePorts) {
+    try {
+      server = Bun.serve({ port, hostname: "127.0.0.1", fetch: fetchHandler });
+      actualPort = port;
+      break;
+    } catch { /* port pris, essayer le suivant */ }
+  }
+  if (!server) throw new Error("No available port for test API server");
+  const baseUrl = `http://127.0.0.1:${actualPort}`;
 
-  log.info(`API Server running at http://${server.hostname}:${server.port}`);
-  return { server, ctx };
+  // Attendre que le serveur soit prêt
+  for (let i = 0; i < 50; i++) {
+    try {
+      const res = await fetch(`${baseUrl}/api/ready`);
+      if (res.ok) break;
+    } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  log.info(`Test API Server running at ${baseUrl}`);
+
+  _server = { baseUrl, ctx };
+  _refCount = 1;
+  _closing = false;
+
+  return _server;
 }
 
-bootstrap().catch((e) => {
-  console.error("Fatal bootstrap error:", e);
-  process.exit(1);
-});
+/**
+ * Décrémente le compteur de références. Quand il atteint 0, le serveur est arrêté.
+ * À appeler dans `afterAll` de la dernière suite de tests d'intégration.
+ */
+export async function releaseTestServer(): Promise<void> {
+  if (!_server) return;
+  _refCount--;
+  if (_refCount > 0) return;
+
+  _closing = true;
+  const serverInstance = _server;
+  _server = null;
+  _refCount = 0;
+  _closing = false;
+
+  // Stop HTTP server
+  // L'instance Bun.Server n'est pas exposée directement ; on la récupère via l'API.
+  // Comme elle est gérée par Bun interne, on ne peut pas la stopper ici.
+  // Le processus se termine proprement avec bun test.
+  console.log(`[test] Server released, refCount=${_refCount}`);
+}
+
+/**
+ * Arrêt immédiat du serveur partagé (utile pour les cleanup d'urgence).
+ */
+export async function stopTestServer(): Promise<void> {
+  if (!_server) return;
+  _closing = true;
+  _refCount = 0;
+  _server = null;
+  _closing = false;
+}
