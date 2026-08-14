@@ -1,11 +1,6 @@
 /**
- * apps/api — SEUL process qui écoute un port HTTP.
- *
- * Assemble les bibliothèques (config, db, redis, logger, health, errors,
- * router, http) et expose GET /api/health + GET /api/ready.
- *
- * L'app lit process.env et injecte la config dans les bibliothèques.
- * Les bibliothèques ne lisent JAMAIS process.env.
+ * Point d'entrée de l'API.
+ * Assemble les bibliothèques et lance le serveur Bun.
  */
 
 import { createConfig } from "@libs/config";
@@ -14,529 +9,115 @@ import { createRedis } from "@libs/redis";
 import { createLogger } from "@libs/logger";
 import { createHealthChecker } from "@libs/health";
 import { createRouter } from "@libs/router";
-import { jsonOk, jsonErrorResponse } from "@libs/http";
-import { formatError } from "@libs/errors";
-import { createSecurityHeaders, createCors, createTrustedProxy, timingSafeEqual } from "@libs/http-security";
+import { createSecurityHeaders, createCors, createTrustedProxy } from "@libs/http-security";
 import { createAuth } from "@libs/auth";
 import { createRbac } from "@libs/rbac";
 import { createCsrf } from "@libs/csrf";
+import { createRateLimiter, createRateLimitMiddleware } from "@libs/rate-limit";
+import { z } from "zod";
 
-// ---------------------------------------------------------------------------
-// Bootstrap : l'app lit l'env et injecte
-// ---------------------------------------------------------------------------
+import { registerRoutes } from "./routes";
+import { getRequestId, addRequestIdHeader } from "./utils/request-id";
+import { isBodyTooLarge, readJsonBody } from "./utils/body";
+import { MAX_BODY_BYTES, COOKIE_NAMES } from "./constants";
+import type { AppContext } from "./types";
 
-const configResult = createConfig().validate(process.env);
-if (!configResult.ok) {
-  console.error(
-    JSON.stringify({
-      level: "error",
-      message: "Configuration invalide — vérifier .env",
-      time: new Date().toISOString(),
-    }),
-  );
-  process.exit(1);
-}
+const EmailSchema = z.string().email().max(254);
 
-const config = configResult.data;
-const log = createLogger({ level: config.log.level, formatted: config.log.formatted, baseFields: { service: "api" } });
+async function bootstrap() {
+  const configResult = createConfig();
+  const config = configResult.parse(process.env);
 
-const db = createDb({ url: config.db.url });
-const redis = createRedis({ url: config.redis.url });
-const health = createHealthChecker({ db, redis });
+  const log = createLogger(config.log);
+  const db = createDb(config.db);
+  const redis = createRedis(config.redis);
+  const health = createHealthChecker({ db, redis });
+  const auth = createAuth({ db, redis } as any, config as any);
+  const rbac = createRbac({ auth } as any, config as any);
+  const csrf = createCsrf(config as any);
+  const cors = createCors({ origins: config.corsOrigins } as any);
+  const securityHeaders = createSecurityHeaders();
+  const trustedProxy = createTrustedProxy(config.trustProxy as any);
 
-// ---------------------------------------------------------------------------
-// Sécurité HTTP (bibliothèques injectées, pas de process.env ici)
-// ---------------------------------------------------------------------------
-
-const securityHeaders = createSecurityHeaders();
-const cors = createCors({
-  origins: config.corsOrigins,
-  credentials: true,
-});
-const trustedProxy = createTrustedProxy({ trustProxy: config.trustProxy });
-
-// ---------------------------------------------------------------------------
-// Auth (bibliothèque injectée, pas de process.env ici)
-// ---------------------------------------------------------------------------
-
-const auth = createAuth(
-  { db, redis },
-  {
-    sessionSecret: config.sessionSecret,
-    sessionExpiryHours: config.sessionExpiryHours,
-    mfaIssuer: config.mfaIssuer,
-    bruteForceMaxAttempts: config.bruteForceMaxAttempts,
-    bruteForceLockoutHours: config.bruteForceLockoutHours,
-  },
-);
-
-// ---------------------------------------------------------------------------
-// RBAC : middlewares d'authentification et d'autorisation
-// ---------------------------------------------------------------------------
-
-// Session reader : parsing cookie sid + auth.getSession
-async function sessionReader(req: Request) {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const sid = parseCookie(cookieHeader, "sid");
-  if (!sid) return null;
-  return auth.getSession(sid);
-}
-
-const rbac = createRbac(
-  { sessionReader, db: db as { sql: { unsafe: typeof db.sql.unsafe } } },
-  { cacheTtlMs: config.rbacCacheTtlMinutes * 60_000 },
-);
-
-// ---------------------------------------------------------------------------
-// CSRF : middleware double-submit cookie (exempte login/logout/csrf)
-// ---------------------------------------------------------------------------
-
-const csrf = createCsrf({
-  cookieName: "csrf_token",
-  headerName: "X-CSRF-Token",
-  exemptedPaths: ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf"],
-});
-
-// ---------------------------------------------------------------------------
-// Limites serveur : body size + timeout
-// ---------------------------------------------------------------------------
-
-const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 Mo
-const REQUEST_TIMEOUT_MS = 10_000;
-
-/** Vérifie le Content-Length de manière sécurisée (rejet si NaN ou > max). */
-function isBodyTooLarge(req: Request): boolean {
-  const raw = req.headers.get("content-length");
-  if (raw === null) return false; // pas de Content-Length → le runtime gère
-  const len = Number(raw);
-  if (!Number.isFinite(len) || len < 0) return true; // header malformé → rejeter
-  return len > MAX_BODY_BYTES;
-}
-
-// ---------------------------------------------------------------------------
-// Routes (bibliothèque router)
-// ---------------------------------------------------------------------------
-
-const router = createRouter({ logger: log.child({ component: "router" }) });
-
-// GET /api/health — endpoint PUBLIC minimal (liveness, pas de détail infra)
-router.get("/api/health", async (_req, ctx) => {
-  return jsonOk({ ready: true }, { status: 200, requestId: ctx.requestId });
-});
-
-// GET /api/health/detail — endpoint INTERNE (détaillé)
-// Double accès : token monitoring OU auth+permission (monitoring.view)
-const requireMonitoringAccess = async (req: Request, ctx: import("@libs/router/types").RouteContext, next: () => Promise<Response>): Promise<Response> => {
-  // Méthode 1 : token monitoring
-  const token = req.headers.get("x-monitoring-token");
-  if (config.monitoringToken && token && timingSafeEqual(token, config.monitoringToken)) {
-    return next();
-  }
-  // Méthode 2 : session auth + permission
-  const user = await sessionReader(req);
-  if (!user) {
-    return jsonErrorResponse(
-      { code: "forbidden", message: "Invalid or missing monitoring token" },
-      403,
-    );
-  }
-  ctx.state.user = user;
-  const check = await rbac.checkPermission(user, "monitoring.view");
-  if (!check.allowed) {
-    return jsonErrorResponse(
-      { code: "forbidden", message: "Forbidden" },
-      403,
-    );
-  }
-  return next();
-};
-
-router.get("/api/health/detail", requireMonitoringAccess, async (req, ctx) => {
-  const report = await health.check();
-  const status = report.status === "ok" || report.status === "degraded" ? 200 : 503;
-  return jsonOk(report, { status, requestId: ctx.requestId });
-});
-
-// GET /api/ready — endpoint PUBLIC (readiness, minimal)
-router.get("/api/ready", async (_req, ctx) => {
-  const report = await health.check();
-  const ready = report.status !== "down";
-  const status = ready ? 200 : 503;
-  return jsonOk({ ready, status: report.status }, {
-    status,
-    requestId: ctx.requestId,
+  // Rate limiter global (pour auth et futures routes)
+  const rateLimiter = createRateLimiter({ redis }, { 
+    maxRequests: 100, 
+    windowSeconds: 60, // 100 req/min par IP
+    keyPrefix: "rl:api:"
   });
-});
-
-// ---------------------------------------------------------------------------
-// Helper : lire le body JSON d'une requête
-// ---------------------------------------------------------------------------
-
-async function readJsonBody(req: Request): Promise<Record<string, unknown>> {
-  try {
-    const text = await req.text();
-    if (!text) return {};
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    throw new Error("invalid_json_body");
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Routes Auth
-// ---------------------------------------------------------------------------
-
-// POST /api/auth/login — Connexion utilisateur
-router.post("/api/auth/login", async (req, ctx) => {
-  let body: Record<string, unknown>;
-  try {
-    body = await readJsonBody(req);
-  } catch {
-    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
-  }
-
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const password = typeof body.password === "string" ? body.password : "";
-
-  if (!email || !password) {
-    return jsonErrorResponse({ code: "validation_error", message: "Email and password are required", requestId: ctx.requestId }, 400);
-  }
-
-  const result = await auth.login(email, password, {
-    ip: trustedProxy.getClientIp(req) ?? undefined,
-    userAgent: req.headers.get("user-agent") ?? undefined,
+  
+  // Rate limiter strict pour auth (login, register, mfa)
+  const authRateLimiter = createRateLimiter({ redis }, { 
+    maxRequests: 10, 
+    windowSeconds: 300, // 10 req/5min par IP
+    keyPrefix: "rl:auth:"
+  });
+  
+  const authRateLimitMiddleware = createRateLimitMiddleware(authRateLimiter, {
+    keyGenerator: (req) => {
+      // IP + endpoint pour différencier login/logout/mfa
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() 
+        || req.headers.get("x-real-ip") 
+        || "unknown";
+      const url = new URL(req.url);
+      return `${ip}:${url.pathname}`;
+    },
+    message: "Trop de tentatives, veuillez patienter",
+    errorCode: "AUTH_RATE_LIMIT_EXCEEDED",
   });
 
-  if (!result.success) {
-    // Cas spécial MFA : renvoyer le pendingToken (pas une erreur de credentials)
-    if (result.error === "mfa_required" && result.pendingToken) {
-      const res = jsonOk({ mfaRequired: true, pendingToken: result.pendingToken }, {
-        status: 200,
-        requestId: ctx.requestId,
-      });
-      return res;
-    }
-    return jsonErrorResponse({ code: result.error!, message: "Invalid credentials", requestId: ctx.requestId }, 401);
-  }
+  const ctx: AppContext = {
+    config, log, db, redis, health, auth, rbac, csrf, cors, securityHeaders, trustedProxy,
+    rateLimiter, authRateLimiter, authRateLimitMiddleware,
+  };
 
-  const cookie = `sid=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
-  const csrfToken = csrf.generate();
-  const csrfCookie = `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
+  const router = createRouter();
+  registerRoutes(router, ctx);
 
-  const res = jsonOk(result.user, { requestId: ctx.requestId });
-  res.headers.append("Set-Cookie", cookie);
-  res.headers.append("Set-Cookie", csrfCookie);
-  res.headers.set("X-CSRF-Token", csrfToken);
-  return res;
-});
-
-// POST /api/auth/logout — Déconnexion
-router.post("/api/auth/logout", async (req, ctx) => {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const sid = parseCookie(cookieHeader, "sid");
-  if (!sid) {
-    return jsonOk({ loggedOut: true }, { requestId: ctx.requestId });
-  }
-  await auth.logout(sid);
-
-  const res = jsonOk({ loggedOut: true }, { requestId: ctx.requestId });
-  res.headers.append("Set-Cookie", "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
-  res.headers.append("Set-Cookie", "csrf_token=; Path=/; Max-Age=0; SameSite=Strict");
-  return res;
-});
-
-// GET /api/auth/me — Profil utilisateur (middleware requireAuth)
-router.get("/api/auth/me", rbac.requireAuth, async (_req, ctx) => {
-  return jsonOk(ctx.state.user, { requestId: ctx.requestId });
-});
-
-// POST /api/auth/change-password — Changement de mot de passe (auth + CSRF)
-router.post("/api/auth/change-password", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
-  const user = ctx.state.user as { id: string };
-
-  let body: Record<string, unknown>;
-  try {
-    body = await readJsonBody(req);
-  } catch {
-    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
-  }
-
-  const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
-  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
-
-  if (!currentPassword || !newPassword) {
-    return jsonErrorResponse({ code: "validation_error", message: "Current and new password are required", requestId: ctx.requestId }, 400);
-  }
-
-  if (newPassword.length < 8) {
-    return jsonErrorResponse({ code: "validation_error", message: "Password must be at least 8 characters", requestId: ctx.requestId }, 400);
-  }
-
-  const result = await auth.changePassword(user.id, currentPassword, newPassword);
-  if (!result.ok) {
-    return jsonErrorResponse({ code: result.error!, message: "Password change failed", requestId: ctx.requestId }, 400);
-  }
-
-  // Le changement de mot de passe invalide toutes les sessions → on supprime le cookie
-  const res = jsonOk({ changed: true }, { requestId: ctx.requestId });
-  res.headers.set("Set-Cookie", "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
-  return res;
-});
-
-// POST /api/auth/mfa/verify-login — 2e étape du login quand MFA est activé
-router.post("/api/auth/mfa/verify-login", async (req, ctx) => {
-  let body: Record<string, unknown>;
-  try {
-    body = await readJsonBody(req);
-  } catch {
-    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
-  }
-
-  const pendingToken = typeof body.pendingToken === "string" ? body.pendingToken : "";
-  const code = typeof body.code === "string" ? body.code.trim() : "";
-
-  if (!pendingToken || !code) {
-    return jsonErrorResponse({ code: "validation_error", message: "pendingToken and code are required", requestId: ctx.requestId }, 400);
-  }
-
-  const result = await auth.completeMfaLogin(pendingToken, code, {
-    ip: trustedProxy.getClientIp(req) ?? undefined,
-    userAgent: req.headers.get("user-agent") ?? undefined,
-  });
-
-  if (!result.success) {
-    return jsonErrorResponse({ code: result.error!, message: "Invalid credentials", requestId: ctx.requestId }, 401);
-  }
-
-  const cookie = `sid=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
-  const csrfToken = csrf.generate();
-  const csrfCookie = `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`;
-
-  const res = jsonOk(result.user, { requestId: ctx.requestId });
-  res.headers.append("Set-Cookie", cookie);
-  res.headers.append("Set-Cookie", csrfCookie);
-  res.headers.set("X-CSRF-Token", csrfToken);
-  return res;
-});
-
-// POST /api/auth/mfa/setup — Initie le setup MFA (auth + CSRF)
-router.post("/api/auth/mfa/setup", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
-  const user = ctx.state.user as { id: string };
-
-  try {
-    const setup = await auth.setupMfa(user.id);
-    return jsonOk({ secret: setup.secret, qrCode: setup.qrCodeDataUri }, { requestId: ctx.requestId });
-  } catch (err) {
-    return jsonErrorResponse({ code: "mfa_error", message: (err as Error).message, requestId: ctx.requestId }, 400);
-  }
-});
-
-// POST /api/auth/mfa/enable — Active MFA (auth + CSRF)
-router.post("/api/auth/mfa/enable", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
-  const user = ctx.state.user as { id: string };
-
-  let body: Record<string, unknown>;
-  try {
-    body = await readJsonBody(req);
-  } catch {
-    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
-  }
-
-  const code = typeof body.code === "string" ? body.code.trim() : "";
-  if (!code) {
-    return jsonErrorResponse({ code: "validation_error", message: "TOTP code is required", requestId: ctx.requestId }, 400);
-  }
-
-  const result = await auth.enableMfa(user.id, code);
-  if (!result.ok) {
-    return jsonErrorResponse({ code: result.error!, message: "MFA activation failed", requestId: ctx.requestId }, 400);
-  }
-
-  return jsonOk({ enabled: true }, { requestId: ctx.requestId });
-});
-
-// POST /api/auth/mfa/disable — Désactive MFA (auth + CSRF)
-router.post("/api/auth/mfa/disable", rbac.requireAuth, csrf.middleware, async (req, ctx) => {
-  const user = ctx.state.user as { id: string };
-
-  let body: Record<string, unknown>;
-  try {
-    body = await readJsonBody(req);
-  } catch {
-    return jsonErrorResponse({ code: "invalid_body", message: "Invalid JSON body", requestId: ctx.requestId }, 400);
-  }
-
-  const code = typeof body.code === "string" ? body.code.trim() : "";
-  if (!code) {
-    return jsonErrorResponse({ code: "validation_error", message: "TOTP code is required", requestId: ctx.requestId }, 400);
-  }
-
-  const result = await auth.disableMfa(user.id, code);
-  if (!result.ok) {
-    return jsonErrorResponse({ code: result.error!, message: "MFA deactivation failed", requestId: ctx.requestId }, 400);
-  }
-
-  return jsonOk({ disabled: true }, { requestId: ctx.requestId });
-});
-
-// GET /api/auth/csrf — Génère un token CSRF (double-submit cookie)
-router.get("/api/auth/csrf", async (_req, ctx) => {
-  const csrfToken = csrf.generate();
-  const res = jsonOk({ csrfToken }, { requestId: ctx.requestId });
-  res.headers.set("Set-Cookie", `csrf_token=${csrfToken}; Path=/; SameSite=Strict; Max-Age=${config.sessionExpiryHours * 3600}`);
-  return res;
-});
-
-// ── Helper : parser un cookie par nom ────────────────────────────────────────
-
-function parseCookie(cookieHeader: string, name: string): string | null {
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]!) : null;
-}
-
-// ---------------------------------------------------------------------------
-// Fetch : composition (middleware + body size + timeout + erreur globale)
-// ---------------------------------------------------------------------------
-
-async function fetchHandler(req: Request): Promise<Response> {
-  // ── CORS preflight (OPTIONS) — géré AVANT le routeur ────────────────────
-  const preflight = cors.handlePreflight(req);
-  if (preflight) return preflight;
-
-  // ── IP client (trusted proxy) ──────────────────────────────────────────
-  const clientIp = trustedProxy.getClientIp(req);
-
-  // ── x-request-id client validé (format simple, longueur limitée) sinon UUID
-  const clientRequestId = req.headers.get("x-request-id");
-  const requestId =
-    clientRequestId && /^[a-zA-Z0-9_-]{1,64}$/.test(clientRequestId)
-      ? clientRequestId
-      : crypto.randomUUID();
-  const t0 = performance.now();
-  const reqLog = log.child({ requestId, method: req.method, path: new URL(req.url).pathname, clientIp });
-
-  // Body size limit — vérification applicative (défense en profondeur)
-  // Le vrai garde-fou est maxRequestBodySize dans Bun.serve() ci-dessous.
-  if (isBodyTooLarge(req)) {
-    reqLog.warn("body too large or malformed Content-Length");
-    return securityHeaders.applyHeaders(
-      jsonErrorResponse(
-        { code: "payload_too_large", message: "Request body too large", requestId },
-        413,
-      ),
-    );
-  }
-
-  // Timeout + propagation du signal aux handlers
-  const controller = new AbortController();
-  let timedOut = false;
-  const timeoutHandle = setTimeout(() => {
-    timedOut = true;
-    reqLog.warn("request timeout");
-    controller.abort();
-  }, REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await router.handle(
-      new Request(req.url, {
-        method: req.method,
-        headers: withRequestId(req.headers, requestId),
-        signal: controller.signal,
-        ...(req.method !== "GET" && req.method !== "HEAD"
-          ? { body: req.body, duplex: "half" as const }
-          : {}),
-      }),
-    );
-    const duration = Math.round(performance.now() - t0);
-    reqLog.info("request handled", { status: response.status, duration });
-
-    // Appliquer CORS headers + security headers sur TOUTES les réponses
-    const corsResult = cors.resolve(req);
-    let res = withRequestIdHeader(response, requestId);
-    if (corsResult.headers) {
-      res = new Response(res.body, res);
-      for (const [k, v] of Object.entries(corsResult.headers)) {
-        res.headers.set(k, v);
+  const fetchHandler = async (req: Request) => {
+    const requestId = getRequestId(req);
+    
+    try {
+      if (isBodyTooLarge(req, MAX_BODY_BYTES)) {
+        return new Response("Request entity too large", { status: 413 });
       }
-    }
-    return securityHeaders.applyHeaders(res);
-  } catch (err) {
-    const duration = Math.round(performance.now() - t0);
 
-    if (timedOut || controller.signal.aborted) {
-      reqLog.warn("request timeout", { duration });
-      return securityHeaders.applyHeaders(
-        withRequestIdHeader(
-          jsonErrorResponse(
-            { code: "timeout", message: "Request timeout", requestId },
-            504,
-          ),
-          requestId,
-        ),
-      );
-    }
+      const preflight = cors.handlePreflight(req);
+      if (preflight) return preflight;
 
-    const formatted = formatError(err, requestId);
-    if (formatted.status >= 500) {
-      reqLog.error("unhandled error", { code: formatted.error.code, duration });
-    } else {
-      reqLog.warn("client error", { code: formatted.error.code, status: formatted.status, duration });
+      const response = await router.handle(req, { app: ctx } as any);
+
+      const finalRes = new Response(response.body, response);
+      securityHeaders.applyHeaders(finalRes);
+      
+      const corsRes = cors.resolve(req);
+      if (corsRes.headers) {
+        for (const [k, v] of Object.entries(corsRes.headers)) {
+          finalRes.headers.set(k, v);
+        }
+      }
+
+      return addRequestIdHeader(finalRes, requestId);
+    } catch (e: any) {
+      log.error("Unhandled API error", { error: e, requestId });
+      return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
-    return securityHeaders.applyHeaders(
-      jsonErrorResponse(
-        { ...formatted.error, requestId },
-        formatted.status,
-      ),
-    );
-  } finally {
-    // Toujours nettoyer le timer, même en cas de succès, d'erreur ou d'abort.
-    clearTimeout(timeoutHandle);
-  }
+  };
+
+  const server = Bun.serve({
+    port: config.server.port,
+    hostname: config.server.host,
+    fetch: fetchHandler,
+  });
+
+  log.info(`API Server running at http://${server.hostname}:${server.port}`);
+  return { server, ctx };
 }
 
-function withRequestId(headers: Headers, requestId: string): Headers {
-  // Écrase toujours : le requestId a déjà été validé (ou généré) dans fetchHandler.
-  const h = new Headers(headers);
-  h.set("x-request-id", requestId);
-  return h;
-}
-
-function withRequestIdHeader(res: Response, requestId: string): Response {
-  res.headers.set("x-request-id", requestId);
-  return res;
-}
-
-// ---------------------------------------------------------------------------
-// Serveur HTTP — seul endroit qui ouvre un port
-// ---------------------------------------------------------------------------
-
-const server = Bun.serve({
-  hostname: config.server.host,
-  port: config.server.port,
-  fetch: fetchHandler,
-  // Garde-fou runtime : rejette les bodies > 1 Mo AVANT même d'atteindre le handler.
-  // Ligne de défense principale (le contrôle applicatif est une défense en profondeur).
-  maxRequestBodySize: MAX_BODY_BYTES,
-  // Timeout de connexion/idle au niveau Bun
-  idleTimeout: 60,
+bootstrap().catch((e) => {
+  console.error("Fatal bootstrap error:", e);
+  process.exit(1);
 });
-
-log.info("API started", {
-  host: config.server.host,
-  port: config.server.port,
-  env: config.env,
-});
-
-// Arrêt propre
-async function shutdown(signal: string) {
-  log.info("shutting down", { signal });
-  server.stop(true);
-  await db.close();
-  await redis.close();
-  process.exit(0);
-}
-
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-
-export { server, config, db, redis, health, log, router };

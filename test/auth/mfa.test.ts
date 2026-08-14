@@ -1,11 +1,27 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, beforeEach } from "bun:test";
 import { generateSecret, getOtpauthUri, verifyCode } from "@libs/auth/mfa";
 import { generateTotpCode } from "./helpers/totp";
+import { createRedis } from "@libs/redis";
 
 describe("mfa", () => {
-  it("generateSecret retourne une chaîne base32 de 32 caractères", () => {
+  let redis: any;
+
+  beforeEach(async () => {
+    // On utilise un client Redis fictif ou réel pour les tests. 
+    // Pour les tests unitaires, on peut mocker l'interface Redis.
+    redis = {
+      get: async () => null,
+      set: async () => {},
+      del: async () => {},
+      ping: async () => true,
+      close: async () => {},
+      client: {}
+    };
+  });
+
+  it("generateSecret retourne une chaîne base32 de 20 caractères", () => {
     const secret = generateSecret();
-    expect(secret.length).toBe(32);
+    expect(secret.length).toBe(20);
     expect(/^[A-Z2-7]+$/.test(secret)).toBe(true);
   });
 
@@ -18,25 +34,55 @@ describe("mfa", () => {
     expect(uri).toContain("digits=6");
   });
 
-  it("verifyCode accepte un code TOTP réellement généré (RFC 6238)", () => {
+  it("verifyCode accepte un code TOTP réellement généré (RFC 6238)", async () => {
     const secret = generateSecret();
     const code = generateTotpCode(secret);
     expect(code).toMatch(/^\d{6}$/);
-    expect(verifyCode(secret, code)).toBe(true);
+    expect(await verifyCode(secret, code, "test-user", redis)).toBe(true);
   });
 
-  it("verifyCode accepte un code TOTP de l'instant précédent (fenêtre ±1)", () => {
+  it("verifyCode accepte un code TOTP de l'instant précédent (fenêtre ±1)", async () => {
     const secret = generateSecret();
-    // 30 secondes dans le passé (même pas ou pas précédent selon l'alignement)
     const code = generateTotpCode(secret, Math.floor(Date.now() / 1000) - 30);
-    expect(verifyCode(secret, code)).toBe(true);
+    expect(await verifyCode(secret, code, "test-user", redis)).toBe(true);
   });
 
-  it("verifyCode échoue sur un code invalide", () => {
+  it("verifyCode échoue sur un code invalide", async () => {
     const secret = generateSecret();
-    expect(verifyCode(secret, "000000")).toBe(false);
-    expect(verifyCode(secret, "abc123")).toBe(false);
-    expect(verifyCode(secret, "")).toBe(false);
-    expect(verifyCode(secret, "1234567")).toBe(false); // 7 chiffres
+    expect(await verifyCode(secret, "000000", "test-user", redis)).toBe(false);
+    expect(await verifyCode(secret, "abc123", "test-user", redis)).toBe(false);
+    expect(await verifyCode(secret, "", "test-user", redis)).toBe(false);
+    expect(await verifyCode(secret, "1234567", "test-user", redis)).toBe(false);
+  });
+
+  it("verifyCode empêche le rejeu du même code", async () => {
+    const secret = generateSecret();
+    const code = generateTotpCode(secret);
+    let setCalled = false;
+    let getCalledValue: string | null = null;
+
+    const mockRedis = {
+      get: async (key: string) => {
+        if (key.includes("used_step")) return getCalledValue;
+        return null;
+      },
+      set: async (key: string, value: string) => {
+        setCalled = true;
+        getCalledValue = value;
+      },
+      del: async () => {},
+      ping: async () => true,
+      close: async () => {},
+      client: {}
+    };
+
+    // Première tentative : OK
+    const first = await verifyCode(secret, code, "test-user", mockRedis);
+    expect(first).toBe(true);
+    expect(setCalled).toBe(true);
+
+    // Deuxième tentative avec le même code : Échec (Rejeu)
+    const second = await verifyCode(secret, code, "test-user", mockRedis);
+    expect(second).toBe(false);
   });
 });

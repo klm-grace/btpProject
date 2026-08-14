@@ -8,6 +8,8 @@ const DEFAULTS: Required<SecurityHeadersConfig> = {
   referrerPolicy: "strict-origin-when-cross-origin",
   permissionsPolicy: "",
   contentTypeOptions: "nosniff",
+  crossOriginOpenerPolicy: "same-origin",
+  crossOriginResourcePolicy: "same-origin",
 };
 
 /**
@@ -30,6 +32,8 @@ export function createSecurityHeaders(config: SecurityHeadersConfig = {}) {
       "X-Content-Type-Options": cfg.contentTypeOptions,
       "X-Frame-Options": cfg.frameOptions,
       "Referrer-Policy": cfg.referrerPolicy,
+      "Cross-Origin-Opener-Policy": cfg.crossOriginOpenerPolicy,
+      "Cross-Origin-Resource-Policy": cfg.crossOriginResourcePolicy,
     };
 
     if (cfg.csp) {

@@ -1,25 +1,17 @@
-import { timingSafeEqual } from "node:crypto";
-import type { Csrf, CsrfConfig } from "./types.ts";
-import type { Middleware } from "../router/types.ts";
+/**
+ * CSRF — Bibliothèque de protection CSRF (double-submit cookie).
+ */
 
-const DEFAULT_COOKIE_NAME = "csrf_token";
+import { timingSafeEqual } from "@libs/http-security";
+import type { Csrf, CsrfConfig } from "./types.ts";
+
 const DEFAULT_HEADER_NAME = "X-CSRF-Token";
 const DEFAULT_PROTECTED_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
-const DEFAULT_EXEMPTED_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf"];
 
 /**
- * Parse un cookie par nom depuis le header Cookie.
+ * Réponse JSON d'erreur CSRF.
  */
-function parseCookie(cookieHeader: string | null, name: string): string | null {
-  if (!cookieHeader) return null;
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]!) : null;
-}
-
-/**
- * Réponse JSON d'erreur CSRF (non verbeuse pour éviter l'énumération).
- */
-function csrfErrorResponse(): Response {
+function csrfError() {
   return new Response(
     JSON.stringify({
       success: false,
@@ -31,58 +23,69 @@ function csrfErrorResponse(): Response {
 
 /**
  * Crée le moteur CSRF — double-submit cookie.
- *
- * Le cookie `csrf_token` est HttpOnly=false (accessible au JS).
- * Le header `X-CSRF-Token` doit reproduire la même valeur.
- * Comparaison en temps constant (timingSafeEqual).
- *
- * Exempte les paths publics (login, logout, csrf endpoint) et les GET/HEAD/OPTIONS.
  */
 export function createCsrf(config: CsrfConfig = {}): Csrf {
-  const cookieName = config.cookieName ?? DEFAULT_COOKIE_NAME;
+  const cookieName = config.cookieName ?? "csrf_token";
   const headerName = config.headerName ?? DEFAULT_HEADER_NAME;
+  const exemptedPaths = config.exemptedPaths ?? ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf"];
   const protectedMethods = config.protectedMethods ?? DEFAULT_PROTECTED_METHODS;
-  const exemptedPaths = config.exemptedPaths ?? DEFAULT_EXEMPTED_PATHS;
 
-  function generate(): string {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  }
+  return {
+    /**
+     * Génère un token CSRF (64 hex chars, cryptographiquement sûr).
+     */
+    generate() {
+      return Array.from(crypto.getRandomValues(new Uint8Array(32)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    },
 
-  function verify(cookieValue: string, headerValue: string): boolean {
-    if (!cookieValue || !headerValue) return false;
-    if (cookieValue.length !== headerValue.length) return false;
-    const enc = new TextEncoder();
-    return timingSafeEqual(enc.encode(cookieValue), enc.encode(headerValue));
-  }
+    /**
+     * Vérifie que le token du header correspond au cookie.
+     * Doit échouer si l'un des deux est vide.
+     */
+    verify(cookieValue: string, headerValue: string) {
+      if (!cookieValue || !headerValue) return false;
+      return timingSafeEqual(cookieValue, headerValue);
+    },
 
-  const middleware: Middleware = async (req, ctx, next) => {
-    // Seulement sur les méthodes protégées (POST/PUT/PATCH/DELETE)
-    if (!protectedMethods.includes(req.method)) {
+    /**
+     * Middleware CSRF pour le routeur.
+     */
+    middleware: async (req, ctx, next) => {
+      const url = new URL(req.url);
+      const path = url.pathname;
+      const method = req.method.toUpperCase();
+
+      // 1. On ignore les méthodes non protégées (GET, HEAD, OPTIONS)
+      if (!protectedMethods.includes(method)) {
+        return next();
+      }
+
+      // 2. On ignore les paths exemptés
+      if (exemptedPaths.some((p) => path === p)) {
+        return next();
+      }
+
+      const cookieHeader = req.headers.get("cookie");
+      const cookieToken = parseCookie(cookieHeader, cookieName);
+      const headerToken = req.headers.get(headerName);
+
+      if (!cookieToken || !headerToken) {
+        return csrfError();
+      }
+
+      if (!timingSafeEqual(cookieToken, headerToken)) {
+        return csrfError();
+      }
+
       return next();
-    }
-
-    // Exempter les paths publics
-    const path = ctx.path;
-    if (exemptedPaths.some((p) => path === p || path.startsWith(p))) {
-      return next();
-    }
-
-    // Lire le cookie csrf_token
-    const cookieHeader = req.headers.get("cookie");
-    const cookieToken = parseCookie(cookieHeader, cookieName);
-
-    // Lire le header X-CSRF-Token
-    const headerToken = req.headers.get(headerName.toLowerCase());
-
-    // Les deux doivent être présents et identiques
-    if (!verify(cookieToken ?? "", headerToken ?? "")) {
-      return csrfErrorResponse();
-    }
-
-    return next();
+    },
   };
+}
 
-  return { generate, verify, middleware };
+function parseCookie(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]!) : null;
 }

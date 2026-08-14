@@ -11,9 +11,11 @@ function createMemoryRedis() {
   return {
     redis: {
       async get(key: string) { return store.get(key) ?? null; },
-      async set(key: string, value: string) { store.set(key, value); },
+      async set(key: string, value: string, ttlSeconds?: number) { store.set(key, value); },
       async del(...keys: string[]) { for (const k of keys) store.delete(k); },
       async ping() { return true; },
+      async close() {},
+      client: {},
     },
     store,
   };

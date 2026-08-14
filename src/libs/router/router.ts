@@ -148,7 +148,7 @@ export function createRouter(options: RouterOptions = {}): Router {
     );
   }
 
-  async function handle(req: Request): Promise<Response> {
+  async function handle(req: Request, context?: any): Promise<Response> {
     const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
     const url = new URL(req.url);
     const path = url.pathname;
@@ -177,15 +177,16 @@ export function createRouter(options: RouterOptions = {}): Router {
     for (const route of routes) {
       const params = matchRoute(route, segments);
       if (params !== null) {
-        const ctx: RouteContext = {
-          params,
-          query: url.searchParams,
-          requestId,
-          method,
-          path,
-          signal: req.signal,
-          state: {},
-        };
+          const ctx: RouteContext = {
+            params,
+            query: url.searchParams,
+            requestId,
+            method,
+            path,
+            signal: req.signal,
+            state: { ...context, ...{} },
+          };
+
         try {
           // Exécuter les middlewares (globaux puis route) en séquence, puis le handler.
           // Chaque middleware peut court-circuiter (Response) ou appeler next().

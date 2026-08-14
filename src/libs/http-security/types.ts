@@ -14,6 +14,10 @@ export interface SecurityHeadersConfig {
   permissionsPolicy?: string;
   /** X-Content-Type-Options (par défaut : nosniff). */
   contentTypeOptions?: string;
+  /** Cross-Origin-Opener-Policy (par défaut : same-origin). */
+  crossOriginOpenerPolicy?: string;
+  /** Cross-Origin-Resource-Policy (par défaut : same-origin). */
+  crossOriginResourcePolicy?: string;
 }
 
 /** Configuration CORS avec liste blanche stricte. */

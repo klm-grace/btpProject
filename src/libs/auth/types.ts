@@ -1,5 +1,7 @@
 // ── Types publics ────────────────────────────────────────────────────────────
 
+import type { Redis } from "@libs/redis";
+
 /** Dépendances injectées par l'app (pas de process.env). */
 export interface AuthDeps {
   /** Client DB (table users, sessions). */
@@ -13,17 +15,13 @@ export interface AuthDeps {
     };
   };
   /** Client Redis (sessions actives + brute-force). */
-  redis: {
-    get(key: string): Promise<string | null>;
-    set(key: string, value: string): Promise<void>;
-    del(...keys: string[]): Promise<void>;
-    ping(): Promise<boolean>;
-  };
+  redis: Redis;
   /** Optionnel : injecter un hasher personnalisé (défaut : Bun.password). */
   hasher?: PasswordHasher;
   /** Optionnel : injecter un générateur de token (défaut : crypto random). */
   tokenGenerator?: () => string;
 }
+
 
 /** Interface du hasher de mots de passe. */
 export interface PasswordHasher {
@@ -50,7 +48,7 @@ export type LoginResult =
   | { success: true; token: string; user: AuthUser }
   | {
       success: false;
-      error: "invalid_credentials" | "account_disabled" | "brute_force_lockout" | "mfa_required";
+      error: "invalid_credentials" | "account_disabled" | "brute_force_lockout" | "mfa_required" | "too_many_mfa_attempts";
       /** Présent quand error === "mfa_required" : pré-session à valider avec le code TOTP. */
       pendingToken?: string;
     };

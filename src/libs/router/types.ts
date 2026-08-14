@@ -90,7 +90,7 @@ export interface Router {
   /** Ajoute un middleware global (exécuté sur TOUTES les routes). */
   use(middleware: Middleware): Router;
   /** Dispatch d'une requête. Renvoie 404/405 si pas de correspondance. */
-  handle(req: Request): Promise<Response>;
+  handle(req: Request, context?: any): Promise<Response>;
   /** Nombre de routes enregistrées. */
   size(): number;
 }

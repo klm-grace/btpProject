@@ -27,15 +27,10 @@ export type {
 
 const PENDING_MFA_PREFIX = "pending_mfa:";
 const MFA_SETUP_PREFIX = "mfa_setup:";
+const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$zS9kS6O+8X/k8T+v3X7f4w$XkS/L3Y7n+qP9zW1R4L2S3V4V5W6X7Y8Z9A0B1C2D3E";
 
 /**
  * Crée le moteur d'authentification.
- *
- * Usage dans l'app :
- * ```ts
- * const auth = createAuth({ db, redis }, { sessionSecret, sessionExpiryHours: 24, ... });
- * const result = await auth.login(email, password, { ip, userAgent });
- * ```
  */
 export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
   const hasher = deps.hasher ?? defaultHasher;
@@ -64,46 +59,38 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     password: string,
     meta?: { ip?: string; userAgent?: string },
   ): Promise<LoginResult> {
-    // 1. Brute-force check
-    const bf = await bruteForce.check(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    const bf = await bruteForce.check(normalizedEmail);
     if (bf.locked) {
       return { success: false, error: "brute_force_lockout" };
     }
 
-    // 2. Lookup utilisateur (message générique — pas d'énumération)
     const user = await deps.db.queryOne<{
       id: string; email: string; password_hash: string; status: string;
       first_name: string | null; last_name: string | null; mfa_enabled: boolean;
     }>`
       SELECT id, email, password_hash, status, first_name, last_name, mfa_enabled
-      FROM users WHERE email = ${email.toLowerCase()} AND deleted_at IS NULL
+      FROM users WHERE email = ${normalizedEmail} AND deleted_at IS NULL
     `;
 
-    if (!user || user.status !== "active") {
-      await bruteForce.recordFailure(email);
+    const hashToVerify = user ? user.password_hash : DUMMY_HASH;
+    const valid = await hasher.verify(password, hashToVerify);
+
+    if (!user || user.status !== "active" || !valid) {
+      await bruteForce.recordFailure(normalizedEmail);
       return { success: false, error: "invalid_credentials" };
     }
 
-    // 3. Vérification du mot de passe
-    const valid = await hasher.verify(password, user.password_hash);
-    if (!valid) {
-      await bruteForce.recordFailure(email);
-      return { success: false, error: "invalid_credentials" };
-    }
-
-    // 4. Si MFA activé → pré-session (pendingToken) à valider avec le code TOTP
     if (user.mfa_enabled) {
       const pendingToken = tokenGen();
-      await deps.redis.set(`${PENDING_MFA_PREFIX}${pendingToken}`, user.id);
+      await deps.redis.set(`${PENDING_MFA_PREFIX}${pendingToken}`, user.id, 900);
       return { success: false, error: "mfa_required", pendingToken };
     }
 
-    // 5. Créer la session
     const token = tokenGen();
     await sessions.create(user.id, token, config.sessionExpiryHours, meta ?? {});
-
-    // 6. Réinitialiser le compteur brute-force
-    await bruteForce.reset(email);
+    await bruteForce.reset(normalizedEmail);
 
     return {
       success: true,
@@ -126,13 +113,20 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     code: string,
     meta?: { ip?: string; userAgent?: string },
   ): Promise<LoginResult> {
-    // 1. Valider la pré-session
     const userId = await deps.redis.get(`${PENDING_MFA_PREFIX}${pendingToken}`);
     if (!userId) {
       return { success: false, error: "invalid_credentials" };
     }
 
-    // 2. Récupérer le secret TOTP en DB
+    const mfaBfKey = `bf_mfa:${pendingToken}`;
+    const mfaAttempts = await deps.redis.get(mfaBfKey);
+    const attempts = mfaAttempts ? parseInt(mfaAttempts, 10) + 1 : 1;
+
+    if (attempts > 5) {
+      await deps.redis.del(`${PENDING_MFA_PREFIX}${pendingToken}`);
+      return { success: false, error: "too_many_mfa_attempts" };
+    }
+
     const user = await deps.db.queryOne<{
       id: string; email: string; status: string;
       first_name: string | null; last_name: string | null;
@@ -147,15 +141,15 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
       return { success: false, error: "invalid_credentials" };
     }
 
-    // 3. Vérifier le code TOTP
-    if (!totpVerify(user.mfa_secret, code)) {
+    const isValid = await totpVerify(user.mfa_secret, code, user.id, deps.redis);
+    if (!isValid) {
+      await deps.redis.set(mfaBfKey, String(attempts), 300);
       return { success: false, error: "invalid_credentials" };
     }
 
-    // 4. Consommer la pré-session
     await deps.redis.del(`${PENDING_MFA_PREFIX}${pendingToken}`);
+    await deps.redis.del(mfaBfKey);
 
-    // 5. Créer la vraie session
     const token = tokenGen();
     await sessions.create(user.id, token, config.sessionExpiryHours, meta ?? {});
 
@@ -206,7 +200,6 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
       [newHash, userId],
     );
 
-    // Invalider toutes les sessions (sécurité)
     await sessions.destroyAll(userId);
 
     return { ok: true };
@@ -224,10 +217,8 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     const secret = generateSecret();
     const otpauthUri = getOtpauthUri(secret, user.email, config.mfaIssuer);
 
-    // Stocker le secret temporairement en Redis (pas encore activé)
-    await deps.redis.set(`${MFA_SETUP_PREFIX}${userId}`, secret);
+    await deps.redis.set(`${MFA_SETUP_PREFIX}${userId}`, secret, 900);
 
-    // QR code data URI (service externe gratuit, pas de dépendance npm)
     const qrCodeDataUri =
       `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpauthUri)}`;
 
@@ -243,23 +234,21 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     const secret = activeSecret?.mfa_secret ?? setupSecret;
     if (!secret) return false;
 
-    return totpVerify(secret, code);
+    return totpVerify(secret, code, userId, deps.redis);
   }
 
   async function enableMfa(userId: string, code: string): Promise<{ ok: boolean; error?: string }> {
     const setupSecret = await deps.redis.get(`${MFA_SETUP_PREFIX}${userId}`);
     if (!setupSecret) return { ok: false, error: "setup_not_initiated" };
 
-    const valid = totpVerify(setupSecret, code);
+    const valid = await totpVerify(setupSecret, code, userId, deps.redis);
     if (!valid) return { ok: false, error: "invalid_code" };
 
-    // Activer MFA sur le compte
     await deps.db.sql.unsafe(
       `UPDATE users SET mfa_enabled = true, mfa_secret = $1, updated_at = NOW() WHERE id = $2::uuid`,
       [setupSecret, userId],
     );
 
-    // Nettoyer le secret temporaire
     await deps.redis.del(`${MFA_SETUP_PREFIX}${userId}`);
 
     return { ok: true };
@@ -272,7 +261,7 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     if (!user?.mfa_enabled) return { ok: false, error: "mfa_not_enabled" };
     if (!user.mfa_secret) return { ok: false, error: "mfa_not_enabled" };
 
-    const valid = totpVerify(user.mfa_secret, code);
+    const valid = await totpVerify(user.mfa_secret, code, userId, deps.redis);
     if (!valid) return { ok: false, error: "invalid_code" };
 
     await deps.db.sql.unsafe(

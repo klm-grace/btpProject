@@ -1,3 +1,5 @@
+import type { Redis, RedisConfig } from "./types.ts";
+
 /**
  * Ouvre un client Redis via le constructeur natif `new RedisClient(url)`.
  * La configuration (url) est INJECTÉE : aucune lecture de process.env.
@@ -26,9 +28,13 @@ export function createRedis(config: RedisConfig): Redis {
     return client.get(key);
   }
 
-  async function set(key: string, value: string): Promise<void> {
+  async function set(key: string, value: string, ttlSeconds?: number): Promise<void> {
     if (!client.connected) await client.connect();
-    await client.set(key, value);
+    if (ttlSeconds !== undefined) {
+      await (client as any).set(key, value, "EX", ttlSeconds);
+    } else {
+      await client.set(key, value);
+    }
   }
 
   async function del(...keys: string[]): Promise<void> {

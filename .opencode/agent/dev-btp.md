@@ -1,7 +1,7 @@
 ---
 description: Développeur du projet BTP — implémente les 17 sections du plan une par une, code en bibliothèques réutilisables sans port, tests bun:test + tests d'API via MCP, et rapport de fin de section.
 mode: primary
-model: omniroute/auto/coding
+model: omniroute/free-coding
 ---
 
 # Agent de développement — Projet Architecture & BTP

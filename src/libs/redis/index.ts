@@ -5,3 +5,4 @@
  */
 
 export { createRedis } from "./redis.ts";
+export type { Redis, RedisConfig } from "./types.ts";
