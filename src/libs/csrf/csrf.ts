@@ -27,7 +27,7 @@ function csrfError() {
 export function createCsrf(config: CsrfConfig = {}): Csrf {
   const cookieName = config.cookieName ?? "csrf_token";
   const headerName = config.headerName ?? DEFAULT_HEADER_NAME;
-  const exemptedPaths = config.exemptedPaths ?? ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf"];
+  const exemptedPrefixes = config.exemptedPrefixes ?? ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf"];
   const protectedMethods = config.protectedMethods ?? DEFAULT_PROTECTED_METHODS;
 
   return {
@@ -62,8 +62,8 @@ export function createCsrf(config: CsrfConfig = {}): Csrf {
         return next();
       }
 
-      // 2. On ignore les paths exemptés
-      if (exemptedPaths.some((p) => path === p)) {
+      // 2. On ignore les paths exemptés (matching par préfixe)
+      if (exemptedPrefixes.some((prefix) => path.startsWith(prefix))) {
         return next();
       }
 

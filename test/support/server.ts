@@ -110,7 +110,7 @@ export async function getTestServer(): Promise<ApiServer> {
     cookieName: COOKIE_NAMES.csrf,
     headerName: "X-CSRF-Token",
     protectedMethods: ["POST", "PUT", "PATCH", "DELETE"],
-    exemptedPaths: ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf", "/api/public/contact", "/api/public/quote"],
+    exemptedPrefixes: ["/api/auth/login", "/api/auth/logout", "/api/auth/csrf", "/api/public"],
   };
   const csrf = createCsrf(csrfCfg);
 

@@ -12,10 +12,11 @@ export interface CsrfConfig {
    */
   protectedMethods?: string[];
   /**
-   * Paths exemptés du CSRF (débuts de chemin).
+   * Préfixes de paths exemptés du CSRF.
+   * Tout chemin commençant par l'un de ces préfixes est ignoré.
    * Défaut : ['/api/auth/login', '/api/auth/logout', '/api/auth/csrf'].
    */
-  exemptedPaths?: string[];
+  exemptedPrefixes?: string[];
 }
 
 /** API publique retournée par createCsrf. */

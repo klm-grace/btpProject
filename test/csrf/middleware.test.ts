@@ -75,9 +75,19 @@ describe("csrf middleware", () => {
     expect(res.status).toBe(200);
   });
 
-  it("paths exemptés ne sont pas protégés (login) → 200", async () => {
+  it("paths exemptés par préfixe ne sont pas protégés (login) → 200", async () => {
     const router = makeRouter();
     const res = await router.handle(buildReq("POST", "http://localhost/api/auth/login"));
+    expect(res.status).toBe(200);
+  });
+
+  it("sous-arbre exempté par préfixe → 200 sans token", async () => {
+    const csrf = createCsrf({ exemptedPrefixes: ["/api/public"] });
+    const router = createRouter();
+    router.use(csrf.middleware);
+    router.post("/api/public/contact", () => jsonOk({ ok: true }));
+    router.post("/api/public/quote", () => jsonOk({ ok: true }));
+    const res = await router.handle(buildReq("POST", "http://localhost/api/public/contact"));
     expect(res.status).toBe(200);
   });
 
