@@ -1,0 +1,15 @@
+meta {
+  name: Health private
+  type: http
+}
+request {
+  url: http://127.0.0.1:4000/api/health
+  method: GET
+  headers {
+    x-monitoring-token: test-monitoring-token
+  }
+  body none
+}
+response {
+  status: 200
+}

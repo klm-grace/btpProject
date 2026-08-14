@@ -17,8 +17,8 @@ headers {
 assert {
   res.status: eq 200
   res.body.success: eq true
-  res.body.data.ready: eq true
-  res.body.requestId: isDefined
+  res.body.data.success: eq true
+  res.headers['x-request-id']: isDefined
 }
 
 docs {

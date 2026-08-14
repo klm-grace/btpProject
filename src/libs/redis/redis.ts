@@ -31,7 +31,7 @@ export function createRedis(config: RedisConfig): Redis {
   async function set(key: string, value: string, ttlSeconds?: number): Promise<void> {
     if (!client.connected) await client.connect();
     if (ttlSeconds !== undefined) {
-      await (client as any).set(key, value, "EX", ttlSeconds);
+      await client.set(key, value, "EX", ttlSeconds);
     } else {
       await client.set(key, value);
     }

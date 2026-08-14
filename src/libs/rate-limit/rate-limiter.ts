@@ -5,8 +5,6 @@
  * Aucun process.env, aucun port, extraction possible.
  */
 
-import type { Middleware } from "@libs/router/types";
-
 export interface RateLimitConfig {
   /** Nombre max de requêtes dans la fenêtre. */
   maxRequests: number;
@@ -66,7 +64,7 @@ export function createRateLimiter(deps: RateLimitDeps, config: RateLimitConfig) 
 
     // Calcule le temps avant reset (plus ancien timestamp dans la fenêtre)
     if (timestamps.length > 0) {
-      const oldest = timestamps[0]!; // Assert non-null car length > 0
+      const oldest = timestamps[0]!;
       resetSeconds = Math.ceil((oldest + windowSeconds * 1000 - now) / 1000);
     }
 
@@ -83,23 +81,35 @@ export function createRateLimiter(deps: RateLimitDeps, config: RateLimitConfig) 
   return { check, reset };
 }
 
+export type RateLimiter = ReturnType<typeof createRateLimiter>;
+
 export interface RateLimitMiddlewareConfig {
   /** Fonction pour extraire la clé (ex: IP, userId, IP+endpoint). */
-  keyGenerator: (req: Request, ctx: any) => string;
+  keyGenerator: (req: Request) => string;
   /** Message d'erreur personnalisé. */
   message?: string;
   /** Code d'erreur. */
   errorCode?: string;
 }
 
+/**
+ * Type de middleware compatible avec le routeur @libs/router.
+ * Le middleware rate-limit retourne une Response 429 ou appelle next().
+ */
+export type RateLimitMiddleware = (
+  req: Request,
+  ctx: unknown,
+  next: () => Promise<Response>,
+) => Response | Promise<Response>;
+
 export function createRateLimitMiddleware(
-  rateLimiter: ReturnType<typeof createRateLimiter>,
+  rateLimiter: RateLimiter,
   config: RateLimitMiddlewareConfig
-): Middleware {
+): RateLimitMiddleware {
   const { keyGenerator, message = "Too Many Requests", errorCode = "RATE_LIMIT_EXCEEDED" } = config;
 
-  return async (req: Request, ctx: any, next: () => Promise<Response>) => {
-    const key = keyGenerator(req, ctx);
+  return async (req: Request, _ctx: unknown, next: () => Promise<Response>) => {
+    const key = keyGenerator(req);
     const result = await rateLimiter.check(key);
 
     // Headers standard RateLimit
@@ -112,24 +122,24 @@ export function createRateLimitMiddleware(
     if (!result.allowed) {
       return new Response(
         JSON.stringify({ success: false, error: { code: errorCode, message } }),
-        { 
-          status: 429, 
-          headers: { 
+        {
+          status: 429,
+          headers: {
             "Content-Type": "application/json",
             ...headers,
             "Retry-After": String(result.resetSeconds),
-          } 
+          }
         }
       );
     }
 
     const res = await next();
-    
+
     // Ajoute les headers sur la réponse
     for (const [k, v] of Object.entries(headers)) {
       res.headers.set(k, v);
     }
-    
+
     return res;
   };
 }

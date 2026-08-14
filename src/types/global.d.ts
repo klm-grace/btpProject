@@ -169,6 +169,7 @@ declare global {
     close(): void | Promise<void>;
     ping(): Promise<string>;
     set(key: string, value: string): Promise<unknown>;
+    set(key: string, value: string, ttlType: "EX", ttlSeconds: number): Promise<unknown>;
     get(key: string): Promise<string | null>;
     del(...keys: string[]): Promise<unknown>;
   }

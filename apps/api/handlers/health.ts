@@ -1,25 +1,31 @@
 /**
- * Handlers pour les endpoints de santé (Health) de apps/api.
+ * Handlers pour les endpoints de health/ready de apps/api.
  */
 
-import type { RouteContext, RouteHandler } from "../types";
-import { jsonOk } from "@libs/http";
+import type { RouteHandler } from "../types";
+import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { getAppContext } from "../utils/context";
 
 /**
  * GET /api/health
- * Vérifie l'état complet des dépendances (DB, Redis).
+ * Endpoint de santé détaillé (protégé par monitoring token).
  */
 export const handleHealth: RouteHandler = async (req, ctx) => {
-  const result = await ctx.app.health.check();
-  const status = result.status === "ok" ? 200 : result.status === "down" ? 503 : 200;
-
-  return jsonOk(result, { status });
+  const app = getAppContext(ctx);
+  try {
+    const result = await app.health.check();
+    return jsonOk({ data: result });
+  } catch (e: unknown) {
+    app.log.error("Health check error", { error: e });
+    return jsonErrorResponse({ message: "Health check failed", code: "HEALTH_ERROR" }, 500);
+  }
 };
 
 /**
  * GET /api/ready
- * Vérification rapide pour Kubernetes/LoadBalancer.
+ * Endpoint de readiness (simple, public).
  */
 export const handleReady: RouteHandler = async (req, ctx) => {
-  return jsonOk({ status: "ready" });
+  const app = getAppContext(ctx);
+  return jsonOk({ success: true, timestamp: new Date().toISOString() });
 };

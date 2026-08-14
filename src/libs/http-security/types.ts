@@ -49,3 +49,20 @@ export interface CorsResult {
   /** Headers CORS à appliquer (null si non autorisé). */
   headers: Record<string, string> | null;
 }
+
+/** API publique retournée par createSecurityHeaders. */
+export interface SecurityHeaders {
+  buildHeaders(): Record<string, string>;
+  applyHeaders(res: Response): Response;
+}
+
+/** API publique retournée par createCors. */
+export interface Cors {
+  resolve(request: Request): CorsResult;
+  handlePreflight(request: Request): Response | null;
+}
+
+/** API publique retournée par createTrustedProxy. */
+export interface TrustedProxy {
+  getClientIp(req: Request): string | null;
+}

@@ -2,12 +2,21 @@ import { describe, expect, it, beforeEach } from "bun:test";
 import { createSessionStore } from "@libs/auth/session";
 import { createBruteForceStore } from "@libs/auth/brute-force";
 import { createAuth } from "@libs/auth";
-import type { AuthConfig, AuthDeps, AuthUser } from "@libs/auth/types";
+import type { AuthConfig, AuthDeps, AuthUser, Redis } from "@libs/auth/types";
 
 // ── Mocks in-memory (sans infra) ─────────────────────────────────────────────
 
 function createMemoryRedis() {
   const store = new Map<string, string>();
+  const mockRedisClient = {
+    connected: true,
+    connect: async () => {},
+    close: () => {},
+    ping: async () => "PONG",
+    set: async () => {},
+    get: async () => null as string | null,
+    del: async () => {},
+  };
   return {
     redis: {
       async get(key: string) { return store.get(key) ?? null; },
@@ -15,8 +24,8 @@ function createMemoryRedis() {
       async del(...keys: string[]) { for (const k of keys) store.delete(k); },
       async ping() { return true; },
       async close() {},
-      client: {},
-    },
+      client: mockRedisClient,
+    } as unknown as Redis,
     store,
   };
 }
@@ -370,5 +379,25 @@ describe("createAuth login/logout", () => {
     const res = await auth.changePassword("u1", "old", "newpassword123");
     expect(res.ok).toBe(true);
     expect(await auth.getSession(token)).toBeNull();
+  });
+
+  it("login effectue une rotation de session : l'ancien token est invalidate apres un nouveau login", async () => {
+    mocks.addUser("u1", "admin@test.com", "argon2id:correct-password");
+    const auth = makeAuth(mocks);
+    // Premiere connexion
+    const first = await auth.login("admin@test.com", "correct-password");
+    expect(first.success).toBe(true);
+    const firstToken = first.success ? first.token : "";
+    expect(await auth.getSession(firstToken)).not.toBeNull();
+    // Deuxieme connexion (rotation)
+    const second = await auth.login("admin@test.com", "correct-password");
+    expect(second.success).toBe(true);
+    const secondToken = second.success ? second.token : "";
+    // Ancien token invalide
+    expect(await auth.getSession(firstToken)).toBeNull();
+    // Nouveau token valide
+    expect(await auth.getSession(secondToken)).not.toBeNull();
+    // destroyAllSessions expose sur l'engine
+    expect(typeof auth.destroyAllSessions).toBe("function");
   });
 });

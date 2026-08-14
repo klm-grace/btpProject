@@ -1,41 +1,45 @@
 /**
  * Types applicatifs pour apps/api.
+ *
+ * Les types Db, Logger, HealthChecker, AppConfig sont déclarés globalement
+ * dans src/types/global.d.ts (declare global) — pas besoin de les importer.
  */
 
-import type { Middleware as BaseMiddleware, RouteContext as BaseRouteContext, RouteHandler as BaseRouteHandler } from "@libs/router/types";
+export type { RouteHandler, Middleware } from "@libs/router/types";
+import type { RouteContext as BaseRouteContext } from "@libs/router/types";
+import type { AuthEngine } from "@libs/auth";
+import type { Rbac } from "@libs/rbac";
+import type { Csrf } from "@libs/csrf";
+import type { Cors, SecurityHeaders, TrustedProxy } from "@libs/http-security";
+import type { RateLimiter, RateLimitMiddleware } from "@libs/rate-limit";
+import type { Redis } from "@libs/redis";
 
 /**
- * Context applicatif injecté dans les handlers et middlewares.
+ * Contexte applicatif injecté dans les handlers et middlewares.
+ * Typé précisément — aucun `any`.
  */
 export interface AppContext {
-  config: any;
-  log: any;
-  db: any;
-  redis: any;
-  health: any;
-  auth: any;
-  rbac: any;
-  csrf: any;
-  cors: any;
-  securityHeaders: any;
-  trustedProxy: any;
-  rateLimiter: any;
-  authRateLimiter: any;
-  authRateLimitMiddleware: any;
+  config: AppConfig;
+  log: Logger;
+  db: Db;
+  redis: Redis;
+  health: HealthChecker;
+  auth: AuthEngine;
+  rbac: Rbac;
+  csrf: Csrf;
+  cors: Cors;
+  securityHeaders: SecurityHeaders;
+  trustedProxy: TrustedProxy;
+  rateLimiter: RateLimiter;
+  authRateLimiter: RateLimiter;
+  authRateLimitMiddleware: RateLimitMiddleware;
 }
 
 /**
- * RouteContext étendu pour inclure l'application.
- * On utilise l'intersection pour rester compatible avec @libs/router.
+ * RouteContext étendu : le contexte de l'app est stocké dans ctx.state.app
+ * (conformément au design du routeur @libs/router qui place le contexte
+ * passé via `handle(req, context)` dans `ctx.state`).
  */
-export type RouteContext = BaseRouteContext & { app: AppContext };
-
-/**
- * Middleware étendu pour utiliser le RouteContext de l'application.
- */
-export type Middleware = (req: Request, ctx: RouteContext, next: () => Promise<Response | null>) => Promise<Response | null>;
-
-/**
- * Handler étendu pour utiliser le RouteContext de l'application.
- */
-export type RouteHandler = (req: Request, ctx: RouteContext) => Promise<Response>;
+export interface RouteContext extends BaseRouteContext {
+  state: BaseRouteContext["state"] & { app: AppContext };
+}

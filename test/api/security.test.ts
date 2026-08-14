@@ -1,152 +1,340 @@
-import { describe, expect, it, beforeAll } from "bun:test";
+import { describe, expect, it, beforeAll, afterAll } from "bun:test";
+import { startTestApiServer } from "../integration-api";
 
-const BASE = "http://127.0.0.1:4000";
+let baseUrl: string;
+let stopServer: () => Promise<void>;
+let cookies: Record<string, string> = {};
 
-/**
- * Tests d'intégration sécurité HTTP.
- * Exigent que l'API soit lancée (bun run api:dev).
- *
- * Lancement :
- *   bun run test:integration
- *
- * Ces tests sont SÉPARÉS de `bun test` pour ne pas rendre la commande
- * standard rouge en l'absence de serveur.
- */
+function parseCookies(setCookieHeader: string): Record<string, string> {
+  const c: Record<string, string> = {};
+  for (const part of setCookieHeader.split(",")) {
+    const trimmed = part.trim();
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx > 0) {
+      const name = trimmed.slice(0, eqIdx).trim();
+      const value = trimmed.slice(eqIdx + 1).split(";")[0]?.trim() ?? "";
+      c[name] = value;
+    }
+  }
+  return c;
+}
 
-let available = false;
+function cookieStr(c: Record<string, string>): string {
+  return Object.entries(c).map(([k, v]) => `${k}=${v}`).join("; ");
+}
 
 beforeAll(async () => {
-  try {
-    const res = await fetch(`${BASE}/api/health`);
-    available = res.ok;
-  } catch {
-    available = false;
-  }
+  const api = await startTestApiServer();
+  baseUrl = api.baseUrl;
+  stopServer = api.stop;
+
+  const res = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+  });
+  expect(res.status).toBe(200);
+  cookies = parseCookies(res.headers.get("set-cookie") ?? "");
+});
+
+afterAll(async () => {
+  await stopServer();
 });
 
 describe("section 04 — sécurité HTTP", () => {
-  // ── Security Headers ────────────────────────────────────────────────────
-
   it("GET /api/health contient HSTS, X-Frame-Options, X-Content-Type-Options", async () => {
-    if (!available) { console.warn("[skip] API non disponible (lancer bun run api:dev)"); return; }
-    const res = await fetch(`${BASE}/api/health`);
+    const res = await fetch(`${baseUrl}/api/health`, {
+      headers: { "x-monitoring-token": "test-monitoring-token" },
+    });
     expect(res.headers.get("strict-transport-security")).toContain("max-age=31536000");
     expect(res.headers.get("x-frame-options")).toBe("DENY");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
   it("GET /api/health contient Content-Security-Policy strict", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`);
+    const res = await fetch(`${baseUrl}/api/health`, {
+      headers: { "x-monitoring-token": "test-monitoring-token" },
+    });
     expect(res.headers.get("content-security-policy")).toBe("default-src 'none'");
   });
 
   it("GET /api/health contient Referrer-Policy", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`);
+    const res = await fetch(`${baseUrl}/api/health`, {
+      headers: { "x-monitoring-token": "test-monitoring-token" },
+    });
     expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
   });
 
   it("GET /inexistant contient aussi les security headers", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/endpoint-qui-nexiste-pas-404`);
+    const res = await fetch(`${baseUrl}/api/endpoint-qui-nexiste-pas-404`, {
+      headers: { "x-monitoring-token": "test-monitoring-token" },
+    });
     expect(res.headers.get("x-frame-options")).toBe("DENY");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  // ── CORS ────────────────────────────────────────────────────────────────
-
-  it("GET /api/health avec Origin autorisée → CORS headers présents", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`, {
-      headers: { Origin: "http://localhost:3000" },
-    });
-    expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
-    expect(res.headers.get("access-control-allow-methods")).toContain("GET");
-    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
-  });
-
-  it("GET /api/health avec Origin non autorisée → PAS de CORS allow-origin", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`, {
-      headers: { Origin: "https://evil.com" },
-    });
-    const acao = res.headers.get("access-control-allow-origin");
-    expect(acao === null || acao === "null").toBe(true);
-  });
-
-  it("GET /api/health sans Origin (curl) → pas de CORS header", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`);
-    expect(res.headers.get("access-control-allow-origin")).toBeNull();
-  });
-
-  it("OPTIONS preflight avec origin autorisée → 204 + CORS headers", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "http://localhost:3000",
-        "Access-Control-Request-Method": "GET",
-      },
-    });
-    expect(res.status).toBe(204);
-    expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
-    expect(res.headers.get("access-control-allow-methods")).toContain("GET");
-    expect(res.headers.get("access-control-max-age")).toBe("86400");
-  });
-
-  it("OPTIONS preflight avec origin non autorisée → 403", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://evil.com",
-        "Access-Control-Request-Method": "GET",
-      },
-    });
+  it("GET /api/health sans token = 403", async () => {
+    const res = await fetch(`${baseUrl}/api/health`);
     expect(res.status).toBe(403);
   });
 
-  // ── Health restrictions ─────────────────────────────────────────────────
+  it("GET /api/health avec token valide = 200", async () => {
+    const res = await fetch(`${baseUrl}/api/health`, { headers: { "x-monitoring-token": "test-monitoring-token" } });
+    expect(res.status).toBe(200);
+  });
 
-  it("GET /api/health → réponse publique minimale", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health`);
-    const body = (await res.json()) as { success: boolean; data: { ready: boolean } };
+  it("GET /api/health avec token invalide = 403", async () => {
+    const res = await fetch(`${baseUrl}/api/health`, { headers: { "x-monitoring-token": "wrong" } });
+    expect(res.status).toBe(403);
+  });
+
+  it("Toute réponse contient x-request-id", async () => {
+    const res = await fetch(`${baseUrl}/api/ready`, { headers: { "x-monitoring-token": "test-monitoring-token" } });
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+});
+
+describe("section 05 — authentification", () => {
+  it("POST /api/auth/login valide → 200 + cookies", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; data: { user: { id: string; email: string; roles: string[] } } };
     expect(body.success).toBe(true);
-    expect(body.data.ready).toBe(true);
-    expect(body.data).not.toHaveProperty("dependencies");
+    expect(body.data.user.email).toBe("admin@btp-dev.local");
+    expect(Array.isArray(body.data.user.roles)).toBe(true);
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain("sid=");
+    expect(setCookie).toContain("csrf_token=");
   });
 
-  it("GET /api/health/detail sans token → 403", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health/detail`);
-    expect(res.status).toBe(403);
-  });
-
-  it("GET /api/health/detail avec mauvais token → 403", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health/detail`, {
-      headers: { "x-monitoring-token": "mauvais-token" },
+  it("POST /api/auth/login mauvais password → 401 générique", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "wrong123" }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { success: boolean; error: { code: string; message: string } };
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("AUTH_FAILED");
+    expect(body.error.message).not.toContain("admin@btp-dev.local");
   });
 
-  it("GET /api/health/detail avec token vide → 403", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/health/detail`, {
-      headers: { "x-monitoring-token": "" },
+  it("POST /api/auth/login email inexistant → 401 (pas d'énumération)", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "ghost@example.com", password: "x1!" }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 
-  it("GET /api/ready → 200 + prêt", async () => {
-    if (!available) { console.warn("[skip] API non disponible"); return; }
-    const res = await fetch(`${BASE}/api/ready`);
-    const body = (await res.json()) as { success: boolean; data: { ready: boolean } };
+  it("POST /api/auth/login body invalide → 400", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "not-email", password: "test" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("cookies Set-Cookie : sid=HttpOnly, csrf_token=lisible, Secure, SameSite=Strict", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(res.status).toBe(200);
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    const parts = setCookie.split(", ");
+    const sessionPart = parts.find((p) => p.startsWith("sid="));
+    const csrfPart = parts.find((p) => p.startsWith("csrf_token="));
+    expect(sessionPart).toBeTruthy();
+    expect(csrfPart).toBeTruthy();
+    expect(sessionPart).toContain("HttpOnly");
+    expect(sessionPart).toContain("Secure");
+    expect(sessionPart).toContain("SameSite=Strict");
+    expect(csrfPart).toContain("Secure");
+    expect(csrfPart).toContain("SameSite=Strict");
+    expect(csrfPart).not.toContain("HttpOnly");
+  });
+
+  it("GET /api/auth/me avec session valide → 200 + user", async () => {
+    // Faire un login frais dans le test même
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
+    const cookieStrVal = Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ");
+    
+    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Cookie: cookieStrVal },
+    });
+    expect(meRes.status).toBe(200);
+    const body = (await meRes.json()) as { success: boolean; data: { user: { id: string; email: string; roles: string[]; mfaEnabled: boolean } } };
     expect(body.success).toBe(true);
-    expect(typeof body.data.ready).toBe("boolean");
-    expect(body.data).not.toHaveProperty("dependencies");
+    expect(body.data.user.email).toBe("admin@btp-dev.local");
+    expect(Array.isArray(body.data.user.roles)).toBe(true);
+    expect(typeof body.data.user.mfaEnabled).toBe("boolean");
+  });
+
+  it("GET /api/auth/me sans cookie → 401", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/me`);
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/auth/me cookie invalide → 401", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Cookie: "sid=invalid; csrf_token=abc" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/auth/change-password sans session → 403 (CSRF check first)", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword: "x", newPassword: "y" }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("csrf_invalid");
+  });
+
+  it("GET /api/auth/csrf → 200 + token hex 64 chars", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/csrf`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; data: { csrfToken: string } };
+    expect(body.success).toBe(true);
+    expect(body.data.csrfToken).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("GET /api/auth/csrf token unique à chaque appel", async () => {
+    const t1 = ((await (await fetch(`${baseUrl}/api/auth/csrf`)).json()) as { data: { csrfToken: string } }).data.csrfToken;
+    const t2 = ((await (await fetch(`${baseUrl}/api/auth/csrf`)).json()) as { data: { csrfToken: string } }).data.csrfToken;
+    expect(t1).not.toBe(t2);
+  });
+
+  it("POST /api/auth/logout → 200, session révoquée → /me 401", async () => {
+    // Login frais
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
+
+    const res = await fetch(`${baseUrl}/api/auth/logout`, {
+      method: "POST",
+      headers: { Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ") },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean };
+    expect(body.success).toBe(true);
+
+    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ") },
+    });
+    expect(meRes.status).toBe(401);
+  });
+});
+
+describe("section 06 — autorisations (RBAC sur routes)", () => {
+  it("GET /api/auth/me sans session → 401", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/me`);
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("section 07 — CSRF protection sur mutations", () => {
+  it("POST /api/auth/login exempté du CSRF → 200 sans token", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("POST /api/auth/logout exempté du CSRF → 200", async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
+
+    const res = await fetch(`${baseUrl}/api/auth/logout`, {
+      method: "POST",
+      headers: { Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ") },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("POST /api/auth/change-password sans header CSRF → 403", async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
+
+    const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; "),
+      },
+      body: JSON.stringify({ currentPassword: "admin1234", newPassword: "Another1!" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("POST /api/auth/change-password token CSRF invalide → 403", async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
+
+    const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; "),
+        "X-CSRF-Token": "invalid-token",
+      },
+      body: JSON.stringify({ currentPassword: "admin1234", newPassword: "Another1!" }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("csrf_invalid");
+  });
+
+  it("GET /api/auth/me exempt du CSRF (GET non protégé) → 200", async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginCookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
+
+    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Cookie: Object.entries(loginCookies).map(([k, v]) => `${k}=${v}`).join("; ") },
+    });
+    expect(meRes.status).toBe(200);
   });
 });

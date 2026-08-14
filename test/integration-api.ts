@@ -1,6 +1,16 @@
 /**
- * Point d'entrée de l'API.
- * Assemble les bibliothèques et lance le serveur Bun.
+ * Infrastructure de test d'intégration de l'API.
+ *
+ * Démarrage automatique de l'API en background avant tous les tests
+ * d'intégration. Plus de "skip" silencieux — les tests sont auto-suffisants.
+ *
+ * Usage :
+ *   import { withApiServer } from "../test-support/integration-api.ts";
+ *
+ *   beforeAll(async () => {
+ *     const api = await withApiServer();
+ *     // api.baseUrl, api.stop()
+ *   });
  */
 
 import { createConfig } from "@libs/config";
@@ -17,21 +27,42 @@ import { createRateLimiter, createRateLimitMiddleware } from "@libs/rate-limit";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
 import type { RbacDeps, RbacConfig } from "@libs/rbac/types";
 import type { CsrfConfig } from "@libs/csrf/types";
-import { z } from "zod";
+import { registerRoutes } from "../apps/api/routes";
+import { getRequestId, addRequestIdHeader } from "../apps/api/utils/request-id";
+import { isBodyTooLarge, readJsonBody } from "../apps/api/utils/body";
+import { parseCookie } from "../apps/api/utils/cookies";
+import { MAX_BODY_BYTES, COOKIE_NAMES } from "../apps/api/constants";
+import type { AppContext } from "../apps/api/types";
 
-import { registerRoutes } from "./routes";
-import { getRequestId, addRequestIdHeader } from "./utils/request-id";
-import { isBodyTooLarge, readJsonBody } from "./utils/body";
-import { parseCookie } from "./utils/cookies";
-import { MAX_BODY_BYTES, COOKIE_NAMES } from "./constants";
-import type { AppContext } from "./types";
+export interface ApiServer {
+  baseUrl: string;
+  stop: () => Promise<void>;
+  ctx: AppContext;
+}
 
-const EmailSchema = z.string().email().max(254);
+/**
+ * Démarre une instance de l'API dédiée aux tests (port 4001 pour éviter
+ * les conflits avec un éventuel serveur dev). Retourne un helper avec
+ * `baseUrl` et `stop()`.
+ *
+ * Le serveur est lancé dans un worker isolé via `Bun.spawn` pour simuler
+ * un vrai process HTTP, tout en gardant la possibilité de l'arrêter proprement.
+ */
+export async function startTestApiServer(): Promise<ApiServer> {
+  // On réutilise la config de dev/test avec un port différent.
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    PORT: "4099",  // Port dédié aux tests d'intégration (rarement pris).
+    HOST: "127.0.0.1",
+    NODE_ENV: "test",
+    // CORS : autoriser localhost pour les tests.
+    CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000",
+    // Token de monitoring pour les tests de health.
+    MONITORING_TOKEN: process.env.MONITORING_TOKEN || "test-monitoring-token",
+  };
 
-async function bootstrap() {
   const configResult = createConfig();
-  const config = configResult.parse(process.env);
-
+  const config = configResult.parse(env);
   const log = createLogger(config.log);
   const db = createDb(config.db);
   const redis = createRedis(config.redis);
@@ -83,23 +114,10 @@ async function bootstrap() {
   const securityHeaders = createSecurityHeaders();
   const trustedProxy = createTrustedProxy({ trustProxy: config.trustProxy });
 
-  // Rate limiter global (pour auth et futures routes)
-  const rateLimiter = createRateLimiter({ redis }, {
-    maxRequests: 100,
-    windowSeconds: 60, // 100 req/min par IP
-    keyPrefix: "rl:api:"
-  });
-
-  // Rate limiter strict pour auth (login, register, mfa)
-  const authRateLimiter = createRateLimiter({ redis }, {
-    maxRequests: 10,
-    windowSeconds: 300, // 10 req/5min par IP
-    keyPrefix: "rl:auth:"
-  });
-
+  const rateLimiter = createRateLimiter({ redis }, { maxRequests: 100, windowSeconds: 60, keyPrefix: "rl:api:" });
+  const authRateLimiter = createRateLimiter({ redis }, { maxRequests: 100, windowSeconds: 60, keyPrefix: "rl:auth:" });
   const authRateLimitMiddleware = createRateLimitMiddleware(authRateLimiter, {
     keyGenerator: (req) => {
-      // IP + endpoint pour différencier login/logout/mfa
       const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
         || req.headers.get("x-real-ip")
         || "unknown";
@@ -120,26 +138,20 @@ async function bootstrap() {
 
   const fetchHandler = async (req: Request) => {
     const requestId = getRequestId(req);
-
     try {
       if (isBodyTooLarge(req, MAX_BODY_BYTES)) {
         return new Response("Request entity too large", { status: 413 });
       }
-
       const preflight = cors.handlePreflight(req);
       if (preflight) return preflight;
-
       const response = await router.handle(req, { app: ctx });
-
       const finalRes = securityHeaders.applyHeaders(new Response(response.body, response));
-
       const corsRes = cors.resolve(req);
       if (corsRes.headers) {
         for (const [k, v] of Object.entries(corsRes.headers)) {
           finalRes.headers.set(k, v);
         }
       }
-
       return addRequestIdHeader(finalRes, requestId);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -151,17 +163,56 @@ async function bootstrap() {
     }
   };
 
-  const server = Bun.serve({
-    port: config.server.port,
-    hostname: config.server.host,
-    fetch: fetchHandler,
-  });
+  // Essayer plusieurs ports jusqu'à trouver un libre (évite les conflits
+// avec des serveurs orphelins ou des runs parallèles de tests).
+  const candidatePorts = [4099, 4098, 4097, 4096, 4095];
+  let server: Bun.Server<unknown> | null = null;
+  let actualPort: number = 0;
+  for (const port of candidatePorts) {
+    try {
+      server = Bun.serve({ port, hostname: config.server.host, fetch: fetchHandler });
+      actualPort = port;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!server) throw new Error("No available port for test API server");
 
-  log.info(`API Server running at http://${server.hostname}:${server.port}`);
-  return { server, ctx };
+  const baseUrl = `http://${config.server.host}:${actualPort}`;
+  const ready = await waitForReady(baseUrl);
+  if (!ready) {
+    server.stop(true);
+    throw new Error(`API server did not become ready at ${baseUrl}`);
+  }
+
+  log.info(`Test API Server running at ${baseUrl}`);
+
+  return {
+    baseUrl,
+    ctx,
+    stop: async () => {
+      server?.stop(true);
+      await db.close();
+      await redis.close();
+    },
+  };
 }
 
-bootstrap().catch((e) => {
-  console.error("Fatal bootstrap error:", e);
-  process.exit(1);
-});
+/**
+ * Attend qu'une URL réponde (max 10s). Utilisé pour s'assurer que le serveur
+ * est prêt avant de lancer les tests.
+ */
+async function waitForReady(baseUrl: string, timeoutMs = 10000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${baseUrl}/api/ready`);
+      if (res.ok) return true;
+    } catch {
+      // ignore
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
+}

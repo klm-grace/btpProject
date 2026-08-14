@@ -17,6 +17,6 @@ headers {
 assert {
   res.status: eq 200
   res.body.success: eq true
-  res.body.data.ready: isDefined
-  res.body.data.status: isDefined
+  res.body.success: eq true
+  res.body.data.success: isDefined
 }

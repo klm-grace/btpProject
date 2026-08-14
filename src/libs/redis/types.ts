@@ -9,5 +9,5 @@ export interface Redis {
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
   del(...keys: string[]): Promise<void>;
   close(): Promise<void>;
-  client: any;
+  client: RedisClientLike;
 }

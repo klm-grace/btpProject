@@ -47,15 +47,17 @@ export function createSecurityHeaders(config: SecurityHeadersConfig = {}) {
   }
 
   /**
-   * Applique les headers de sécurité sur une Response existante (clone immuable).
+   * Applique les headers de sécurité sur une Response existante (mutation
+   * en place — les Response.headers sont mutables). Retourne la même
+   * Response pour permettre le chaînage, mais NE recrée PAS la Response
+   * (pas de partage du body stream, donc pas de "ReadableStream is locked").
    */
   function applyHeaders(res: Response): Response {
-    const patched = new Response(res.body, res);
     const h = buildHeaders();
     for (const [key, value] of Object.entries(h)) {
-      patched.headers.set(key, value);
+      res.headers.set(key, value);
     }
-    return patched;
+    return res;
   }
 
   return { buildHeaders, applyHeaders };

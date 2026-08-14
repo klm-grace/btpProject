@@ -89,8 +89,10 @@ export interface Router {
   delete(path: string, ...args: [...Middleware[], RouteHandler]): Router;
   /** Ajoute un middleware global (exécuté sur TOUTES les routes). */
   use(middleware: Middleware): Router;
-  /** Dispatch d'une requête. Renvoie 404/405 si pas de correspondance. */
-  handle(req: Request, context?: any): Promise<Response>;
+  /** Dispatch d'une requête. Renvoie 404/405 si pas de correspondance.
+   * Le `context` arbitraire est copié dans `ctx.state` (l'app injecte son contexte).
+   */
+  handle(req: Request, context?: Record<string, unknown>): Promise<Response>;
   /** Nombre de routes enregistrées. */
   size(): number;
 }

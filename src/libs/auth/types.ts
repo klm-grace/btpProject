@@ -1,5 +1,6 @@
 // ── Types publics ────────────────────────────────────────────────────────────
 
+export type { Redis } from "@libs/redis";
 import type { Redis } from "@libs/redis";
 
 /** Dépendances injectées par l'app (pas de process.env). */
@@ -96,6 +97,8 @@ export interface AuthEngine {
   logout(sessionToken: string): Promise<void>;
   getSession(sessionToken: string): Promise<AuthUser | null>;
   changePassword(userId: string, currentPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }>;
+  /** Invalide toutes les sessions de l'utilisateur (rotation de session). */
+  destroyAllSessions(userId: string): Promise<void>;
   setupMfa(userId: string): Promise<MfaSetupResult>;
   verifyMfa(userId: string, code: string): Promise<boolean>;
   enableMfa(userId: string, code: string): Promise<{ ok: boolean; error?: string }>;

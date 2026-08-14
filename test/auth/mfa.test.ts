@@ -1,21 +1,28 @@
 import { describe, expect, it, beforeEach } from "bun:test";
 import { generateSecret, getOtpauthUri, verifyCode } from "@libs/auth/mfa";
 import { generateTotpCode } from "./helpers/totp";
-import { createRedis } from "@libs/redis";
+import type { Redis } from "@libs/redis";
 
 describe("mfa", () => {
-  let redis: any;
+  let redis: Redis;
 
   beforeEach(async () => {
-    // On utilise un client Redis fictif ou réel pour les tests. 
-    // Pour les tests unitaires, on peut mocker l'interface Redis.
+    // On utilise un client Redis fictif pour les tests unitaires.
     redis = {
       get: async () => null,
       set: async () => {},
       del: async () => {},
       ping: async () => true,
       close: async () => {},
-      client: {}
+      client: {
+        connected: true,
+        connect: async () => {},
+        close: () => {},
+        ping: async () => "PONG",
+        set: async () => {},
+        get: async () => null,
+        del: async () => {},
+      },
     };
   });
 
@@ -61,7 +68,7 @@ describe("mfa", () => {
     let setCalled = false;
     let getCalledValue: string | null = null;
 
-    const mockRedis = {
+    const mockRedis: Redis = {
       get: async (key: string) => {
         if (key.includes("used_step")) return getCalledValue;
         return null;
@@ -73,7 +80,15 @@ describe("mfa", () => {
       del: async () => {},
       ping: async () => true,
       close: async () => {},
-      client: {}
+      client: {
+        connected: true,
+        connect: async () => {},
+        close: () => {},
+        ping: async () => "PONG",
+        set: async () => {},
+        get: async () => null,
+        del: async () => {},
+      },
     };
 
     // Première tentative : OK

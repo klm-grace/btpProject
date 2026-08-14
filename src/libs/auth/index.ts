@@ -88,6 +88,9 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
       return { success: false, error: "mfa_required", pendingToken };
     }
 
+    // Rotation de session : invalider les anciennes sessions de l'utilisateur
+    await sessions.destroyAll(user.id);
+
     const token = tokenGen();
     await sessions.create(user.id, token, config.sessionExpiryHours, meta ?? {});
     await bruteForce.reset(normalizedEmail);
@@ -149,6 +152,9 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
 
     await deps.redis.del(`${PENDING_MFA_PREFIX}${pendingToken}`);
     await deps.redis.del(mfaBfKey);
+
+    // Rotation de session : invalider les anciennes sessions de l'utilisateur
+    await sessions.destroyAll(user.id);
 
     const token = tokenGen();
     await sessions.create(user.id, token, config.sessionExpiryHours, meta ?? {});
@@ -272,12 +278,19 @@ export function createAuth(deps: AuthDeps, config: AuthConfig): AuthEngine {
     return { ok: true };
   }
 
+  // ── Destroy All Sessions (token rotation) ──────────────────────────────
+
+  async function destroyAllSessions(userId: string): Promise<void> {
+    await sessions.destroyAll(userId);
+  }
+
   return {
     login,
     completeMfaLogin,
     logout,
     getSession,
     changePassword,
+    destroyAllSessions,
     setupMfa,
     verifyMfa,
     enableMfa,

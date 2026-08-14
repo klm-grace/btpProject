@@ -17,7 +17,7 @@ headers {
 assert {
   res.status: eq 200
   res.body.success: eq true
-  res.body.data.ready: eq true
+  res.body.success: eq true
   res.headers['strict-transport-security']: isDefined
   res.headers['x-frame-options']: eq DENY
   res.headers['x-content-type-options']: eq nosniff

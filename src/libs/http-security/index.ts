@@ -8,6 +8,7 @@
  * - security-headers : headers de sécurité (HSTS, CSP, X-Frame-Options...)
  * - cors : liste blanche stricte d'origines, gère le preflight OPTIONS
  * - proxy : extraction sécurisée de l'IP client (trusted proxy)
+ * - timing-safe : comparaison en temps constant (secrets/tokens)
  */
 export { createSecurityHeaders } from "./security-headers.ts";
 export { createCors } from "./cors.ts";
@@ -19,4 +20,7 @@ export type {
   CorsConfig,
   TrustedProxyConfig,
   CorsResult,
+  SecurityHeaders,
+  Cors,
+  TrustedProxy,
 } from "./types.ts";

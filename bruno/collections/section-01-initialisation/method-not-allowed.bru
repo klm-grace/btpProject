@@ -5,7 +5,7 @@ meta {
 }
 
 post {
-  url: {{base_url}}/health
+  url: {{base_url}}/api/health
   body: none
   auth: none
 }
@@ -15,8 +15,8 @@ headers {
 }
 
 assert {
-  res.status: eq 404
-  res.body.error.code: eq not_found
+  res.status: eq 405
+  res.body.error.code: eq method_not_allowed
 }
 
 docs {

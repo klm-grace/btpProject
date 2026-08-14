@@ -17,8 +17,8 @@ headers {
 assert {
   res.status: eq 200
   res.body.success: eq true
-  res.body.data.status: eq ok
-  res.body.requestId: isDefined
+  res.body.data.data.status: eq ok
+  res.body.data.data.uptime: isDefined
 }
 
 docs {

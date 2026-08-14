@@ -148,7 +148,7 @@ export function createRouter(options: RouterOptions = {}): Router {
     );
   }
 
-  async function handle(req: Request, context?: any): Promise<Response> {
+async function handle(req: Request, context?: Record<string, unknown>): Promise<Response> {
     const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
     const url = new URL(req.url);
     const path = url.pathname;
@@ -167,7 +167,7 @@ export function createRouter(options: RouterOptions = {}): Router {
       return jsonError(400, "bad_request", "Malformed request path", requestId);
     }
 
-    // OPTIONS : renvoyer Allow si la route existe (même si aucune méthode OPTIONS enregistrée).
+    // OPTIONS : renvoyer Allow si la route existe (mÃªme si aucune méthode OPTIONS enregistrée).
     if (method === "OPTIONS") {
       return buildMethodNotAllowed(path, requestId);
     }
@@ -184,7 +184,7 @@ export function createRouter(options: RouterOptions = {}): Router {
             method,
             path,
             signal: req.signal,
-            state: { ...context, ...{} },
+            state: context ? { ...context } : {},
           };
 
         try {
