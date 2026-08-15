@@ -3,7 +3,6 @@ import { getTestServer, releaseTestServer } from "../support/server";
 
 let baseUrl = "";
 let cookies: Record<string, string> = {};
-let adminUserId = "";
 
 function parseCookies(setCookieHeader: string): Record<string, string> {
   const c: Record<string, string> = {};
@@ -29,7 +28,6 @@ beforeAll(async () => {
   const server = await getTestServer();
   baseUrl = server.baseUrl;
 
-  // Login admin
   const res = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,21 +35,6 @@ beforeAll(async () => {
   });
   expect(res.status).toBe(200);
   cookies = parseCookies(res.headers.get("set-cookie") ?? "");
-  
-  // Get user ID
-  const meRes = await fetch(`${baseUrl}/api/auth/me`, {
-    headers: { "Cookie": cookieHeader() },
-  });
-  const meData = await meRes.json() as { success: boolean; data: { user: { id: string; email: string; roles: string[] } } };
-  if (meData.success) {
-    adminUserId = meData.data.user.id;
-    // Debug: check permissions
-    const perms = await server.ctx.rbac.getUserPermissions(adminUserId);
-    console.log("DEBUG - User ID:", adminUserId);
-    console.log("DEBUG - Permissions:", perms);
-    console.log("DEBUG - Has portfolio.read:", perms.includes("portfolio.read"));
-    console.log("DEBUG - Has portfolio.write:", perms.includes("portfolio.write"));
-  }
 });
 
 afterAll(async () => {
@@ -71,12 +54,11 @@ describe("section 10 — Portfolio", () => {
       const res = await fetch(`${baseUrl}/api/admin/categories`, {
         headers: { "Cookie": cookieHeader() },
       });
-      console.log("DEBUG - GET categories status:", res.status);
-      console.log("DEBUG - GET categories body:", await res.text());
       expect(res.status).toBe(200);
     });
 
     it("POST /api/admin/categories crée une catégorie", async () => {
+      const slug = "residentiel-" + Date.now();
       const res = await fetch(`${baseUrl}/api/admin/categories`, {
         method: "POST",
         headers: {
@@ -84,16 +66,56 @@ describe("section 10 — Portfolio", () => {
           "X-CSRF-Token": cookies.csrf_token ?? "",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name: "Résidentiel", slug: "residentiel-" + Date.now(), description: "Test", sortOrder: 0 }),
+        body: JSON.stringify({ name: "Résidentiel", slug, description: "Test", sortOrder: 0 }),
       });
-      console.log("DEBUG - POST categories status:", res.status);
-      console.log("DEBUG - POST categories body:", await res.text());
       expect(res.status).toBe(201);
+    });
+
+    it("POST /api/admin/categories avec slug dupliqué → 409", async () => {
+      const slug = "dup-slug-" + Date.now();
+      await fetch(`${baseUrl}/api/admin/categories`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "Dup", slug }),
+      });
+      const res = await fetch(`${baseUrl}/api/admin/categories`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "Dup2", slug }),
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("POST /api/admin/categories avec slug invalide → 400", async () => {
+      const res = await fetch(`${baseUrl}/api/admin/categories`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "Test", slug: "Invalid Slug!" }),
+      });
+      expect(res.status).toBe(400);
     });
   });
 
   describe("Projets", () => {
+    it("GET /api/admin/projects sans session → 401", async () => {
+      const res = await fetch(`${baseUrl}/api/admin/projects`);
+      expect(res.status).toBe(401);
+    });
+
     it("POST /api/admin/projects crée un projet", async () => {
+      const slug = "ma-realisation-" + Date.now();
       const res = await fetch(`${baseUrl}/api/admin/projects`, {
         method: "POST",
         headers: {
@@ -101,11 +123,142 @@ describe("section 10 — Portfolio", () => {
           "X-CSRF-Token": cookies.csrf_token ?? "",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ title: "Ma Réalisation", slug: "ma-realisation-" + Date.now(), status: "draft" }),
+        body: JSON.stringify({ title: "Ma Réalisation", slug, status: "draft" }),
       });
-      console.log("DEBUG - POST projects status:", res.status);
-      console.log("DEBUG - POST projects body:", await res.text());
       expect(res.status).toBe(201);
+    });
+
+    it("POST /api/admin/projects avec slug dupliqué → 409", async () => {
+      const slug = "dup-proj-slug-" + Date.now();
+      await fetch(`${baseUrl}/api/admin/projects`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Dup 1", slug }),
+      });
+      const res = await fetch(`${baseUrl}/api/admin/projects`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Dup 2", slug }),
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("GET /api/admin/projects/:id récupère un projet", async () => {
+      const createRes = await fetch(`${baseUrl}/api/admin/projects`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Test Get", slug: "test-get-" + Date.now() }),
+      });
+      const createData = await createRes.json() as { id?: string };
+      if (!createData.id) return;
+
+      const res = await fetch(`${baseUrl}/api/admin/projects/${createData.id}`, {
+        headers: { "Cookie": cookieHeader() },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("PUT /api/admin/projects/:id modifie un projet", async () => {
+      const createRes = await fetch(`${baseUrl}/api/admin/projects`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Test Update", slug: "test-update-" + Date.now() }),
+      });
+      const createData = await createRes.json() as { id?: string };
+      if (!createData.id) return;
+
+      const res = await fetch(`${baseUrl}/api/admin/projects/${createData.id}`, {
+        method: "PUT",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Test Update Modifié" }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("POST /api/admin/projects/:id/publish publie un projet", async () => {
+      const createRes = await fetch(`${baseUrl}/api/admin/projects`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Test Publish", slug: "test-publish-" + Date.now() }),
+      });
+      const createData = await createRes.json() as { id?: string };
+      if (!createData.id) return;
+
+      const res = await fetch(`${baseUrl}/api/admin/projects/${createData.id}/publish`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+        },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("POST /api/admin/projects/:id/unpublish dépublie un projet", async () => {
+      const createRes = await fetch(`${baseUrl}/api/admin/projects`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Test Unpublish", slug: "test-unpublish-" + Date.now() }),
+      });
+      const createData = await createRes.json() as { id?: string };
+      if (!createData.id) return;
+
+      const res = await fetch(`${baseUrl}/api/admin/projects/${createData.id}/unpublish`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+        },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("DELETE /api/admin/projects/:id soft delete un projet", async () => {
+      const createRes = await fetch(`${baseUrl}/api/admin/projects`, {
+        method: "POST",
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": cookies.csrf_token ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ title: "Test Delete", slug: "test-delete-" + Date.now() }),
+      });
+      const createData = await createRes.json() as { id?: string };
+      if (!createData.id) return;
+
+      const res = await fetch(`${baseUrl}/api/admin/projects/${createData.id}`, {
+        method: "DELETE",
+        headers: { "Cookie": cookieHeader() },
+      });
+      expect(res.status).toBe(200);
     });
   });
 });
