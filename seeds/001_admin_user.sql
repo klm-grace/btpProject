@@ -19,7 +19,9 @@ INSERT INTO permissions (id, name, description) VALUES
     ('00000000-0000-0000-0000-000000000015', 'leads.write', 'Gérer les leads'),
     ('00000000-0000-0000-0000-000000000016', 'media.upload', 'Uploader des médias'),
     ('00000000-0000-0000-0000-000000000017', 'settings.manage', 'Gérer les paramètres'),
-    ('00000000-0000-0000-0000-000000000018', 'monitoring.view', 'Voir les détails de santé')
+    ('00000000-0000-0000-0000-000000000018', 'monitoring.view', 'Voir les détails de santé'),
+    ('00000000-0000-0000-0000-000000000020', 'portfolio.read', 'Lire le portfolio'),
+    ('00000000-0000-0000-0000-000000000021', 'portfolio.write', 'Gérer le portfolio')
 ON CONFLICT (id) DO NOTHING;
 
 -- Admin a toutes les permissions
