@@ -173,6 +173,7 @@ export async function getTestServer(): Promise<ApiServer> {
     { storage, log: log.child({ module: "upload" }) },
     {
       maxFileSizeBytes: 10 * 1024 * 1024,
+      maxStorageBytes: 100 * 1024 * 1024,
       allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
       imageMaxWidth: 1920,
       imageMaxHeight: 1080,

@@ -48,6 +48,7 @@ function createMockStorage() {
 function makeConfig(overrides: Partial<UploadConfig> = {}): UploadConfig {
   return {
     maxFileSizeBytes: 10 * 1024 * 1024,
+    maxStorageBytes: 100 * 1024 * 1024, // 100 MB
     allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
     imageMaxWidth: 1920,
     imageMaxHeight: 1080,
@@ -142,6 +143,74 @@ describe("upload", () => {
       expect(MAGIC_BYTES.JPEG).toEqual([0xff, 0xd8, 0xff]);
       expect(MAGIC_BYTES.GIF).toEqual([0x47, 0x49, 0x46]);
       expect(MAGIC_BYTES.WEBP).toEqual([0x52, 0x49, 0x46, 0x46]);
+    });
+  });
+
+  describe("sanitizeKey", () => {
+    it("sanitize les caractères spéciaux sans jeter", () => {
+      // sanitizeKey est maintenant exportée via generateStorageKey
+      const key = generateStorageKey("../../etc/passwd.png", "image/png");
+      // Les "/" sont remplacés par "_" dans generateStorageKey (chemin YYYY/MM/DD est ajouté par la fonction)
+      // Vérifier que ".." est transformé en "_dot_"
+      expect(key).toContain("_dot_");
+      expect(key).toMatch(/^\d{4}\/\d{2}\/\d{2}\//);
+    });
+
+    it("génère une clé safe avec path traversal tenté", () => {
+      const key = generateStorageKey("../../../root.png", "image/png");
+      expect(key).toContain("_dot_");
+      expect(key).toMatch(/^\d{4}\/\d{2}\/\d{2}\//);
+    });
+  });
+
+  describe("upload — erreurs structurées", () => {
+    it("upload() retourne une erreur structurée au lieu de jeter", async () => {
+      const result = await upload.upload({ buffer: new Uint8Array(0), mime: "image/png", originalName: "empty.png" });
+      // upload() retourne maintenant { ok: false, code, message } au lieu de jeter
+      if ("ok" in result && !result.ok) {
+        expect(result.code).toBe("EMPTY_FILE");
+      } else {
+        throw new Error("Expected validation error");
+      }
+    });
+
+    it("upload() retourne STORAGE_FULL quand storage plein", async () => {
+      // Utiliser un PNG valide (structure complète) pour passer la validation
+      const pngBuf = new Uint8Array([
+        137, 80, 78, 71, 13, 10, 26, 10,
+        0, 0, 0, 13, 73, 72, 68, 82,
+        0, 0, 0, 1, 0, 0, 0, 1,
+        8, 2, 0, 0, 0, 0x90, 0x77, 0x53, 0xDE,
+        0, 0, 0, 9, 73, 68, 65, 84,
+        0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x02,
+        0x00, 0xE2, 0x21, 0xBC, 0x33,
+        0, 0, 0, 0, 73, 69, 78, 68, 0xAE, 0x42, 0x60, 0x82,
+      ]);
+      const mockStorage = createMockStorage();
+      const uploadFull = createUpload(
+        { storage: mockStorage, log: { info: () => {} } },
+        { ...makeConfig(), maxStorageBytes: 1 }, // 1 byte capacity
+      );
+      const result = await uploadFull.upload({ buffer: pngBuf, mime: "image/png", originalName: "test.png" });
+      if ("ok" in result && !result.ok) {
+        expect(result.code).toBe("STORAGE_FULL");
+      } else {
+        throw new Error("Expected STORAGE_FULL error");
+      }
+    });
+
+    it("deleteByMediaId supprime les fichiers du storage", async () => {
+      const key1 = "2026/08/15/uuid_test.png";
+      const key2 = "2026/08/15/uuid_test_variant_150.webp";
+      await storage.put(key1, new Uint8Array([1, 2, 3]));
+      await storage.put(key2, new Uint8Array([4, 5, 6]));
+      expect(await storage.exists(key1)).toBe(true);
+      expect(await storage.exists(key2)).toBe(true);
+
+      await upload.deleteByMediaId("test-media-id", [key1, key2]);
+
+      expect(await storage.exists(key1)).toBe(false);
+      expect(await storage.exists(key2)).toBe(false);
     });
   });
 });

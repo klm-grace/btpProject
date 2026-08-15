@@ -15,6 +15,8 @@ export type { UploadFile, VariantOptions } from "./types.ts";
 /** Options de configuration. */
 export interface UploadConfig {
   maxFileSizeBytes: number;
+  /** Limite de capacité du stockage en bytes. 0 = pas de limite. */
+  maxStorageBytes: number;
   allowedMimeTypes: string[];
   imageMaxWidth: number;
   imageMaxHeight: number;
@@ -40,6 +42,9 @@ export interface UploadValidationError {
 }
 
 export type UploadValidationResult = { ok: true } | UploadValidationError;
+
+/** Résultat étendu de upload() incluant les erreurs de validation. */
+export type UploadResultWithValidation = UploadResult | UploadValidationError;
 
 /**
  * Type du moteur d'upload retourné par createUpload.
@@ -116,10 +121,19 @@ export function createUpload(
 
   async function upload(
     file: { buffer: Uint8Array; mime: string; originalName: string; userId?: string },
-  ): Promise<UploadResult> {
+  ): Promise<UploadResultWithValidation> {
     const validation = await validate(file);
     if (!validation.ok) {
-      throw new Error(`Upload validation failed: ${validation.code} - ${validation.message}`);
+      // Ne JAMAIS jeter — retourner une erreur structurée que le handler peut mapper
+      return { ok: false, code: validation.code, message: validation.message };
+    }
+
+    // Vérifier la capacité du storage (anti-DoS)
+    if (config.maxStorageBytes > 0) {
+      const currentSize = await storage.size();
+      if (currentSize + file.buffer.byteLength > config.maxStorageBytes) {
+        return { ok: false, code: "STORAGE_FULL", message: "Stockage plein" } as any;
+      }
     }
 
     const key = generateStorageKey(file.originalName, file.mime);
@@ -159,8 +173,11 @@ export function createUpload(
     };
   }
 
-  async function deleteByMediaId(_mediaId: string): Promise<void> {
-    log.info("deleteByMediaId called", { mediaId: _mediaId });
+  async function deleteByMediaId(mediaId: string, storageKeys: string[]): Promise<void> {
+    log.info("deleteByMediaId", { mediaId, keyCount: storageKeys.length });
+    for (const key of storageKeys) {
+      await storage.del(key);
+    }
   }
 
   async function cleanupOrphans(_maxAgeHours: number): Promise<number> {

@@ -122,6 +122,7 @@ declare global {
       diskPath: string;
       diskMaxBytes: number;
       maxFileSizeBytes: number;
+      maxStorageBytes: number;
       allowedMimeTypes: string[];
       imageMaxWidth: number;
       imageMaxHeight: number;

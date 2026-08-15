@@ -35,11 +35,13 @@ export function checkMagicBytes(buffer: Uint8Array): string | null {
 }
 
 /** Sanitize le key de stockage (defense path traversal). */
-function sanitizeKey(key: string): string {
-  if (key.includes("..") || key.includes("/") || key.includes("\\")) {
-    throw new Error("Invalid storage key: path traversal detected");
-  }
-  return key.replace(/[^a-zA-Z0-9_.-]/g, "_");
+export function sanitizeKey(key: string): string {
+  // Supprimer d'abord les séquences de traversal
+  let safe = key.replace(/\.\./g, "_dot_");
+  // Remplacer tous les caractères dangereux par "_"
+  // Ne JAMAIS jeter — toujours produire un string safe
+  safe = safe.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  return safe;
 }
 
 /** Génère un key de stockage unique avec arborescence YYYY/MM/DD/. */
@@ -50,6 +52,7 @@ export function generateStorageKey(originalName: string, mime: string): string {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
+  // sanitizeKey ne jette plus — remplace les caractères dangereux par "_"
   const sanitized = sanitizeKey(originalName.replace(/\.[^.]+$/, ""));
   return `${year}/${month}/${day}/${uuid}_${sanitized}${ext}`;
 }

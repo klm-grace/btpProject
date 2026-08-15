@@ -169,6 +169,7 @@ async function bootstrap() {
   // Upload engine
   const uploadConfig = {
     maxFileSizeBytes: config.storage.maxFileSizeBytes,
+    maxStorageBytes: config.storage.diskMaxBytes, // Same as diskMaxBytes — prevent filling disk
     allowedMimeTypes: config.storage.allowedMimeTypes,
     imageMaxWidth: config.storage.imageMaxWidth,
     imageMaxHeight: config.storage.imageMaxHeight,

@@ -123,6 +123,7 @@ function toConfig(parsed: ParsedConfig): AppConfig {
       diskPath: parsed.storageDiskPath,
       diskMaxBytes: parsed.storageDiskMaxBytes,
       maxFileSizeBytes: parsed.maxFileSizeBytes,
+      maxStorageBytes: parsed.storageDiskMaxBytes,
       allowedMimeTypes: parsed.allowedMimeTypes.split(",").map((m) => m.trim()).filter(Boolean),
       imageMaxWidth: parsed.imageMaxWidth,
       imageMaxHeight: parsed.imageMaxHeight,

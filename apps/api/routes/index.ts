@@ -8,7 +8,7 @@ import { handleHealth, handleReady } from "../handlers/health";
 import { handleLogin, handleLogout, handleGetMe, handleChangePassword, handleGetCsrf } from "../handlers/auth";
 import { handleMfaVerify, handleMfaSetup } from "../handlers/mfa";
 import { handleContactSubmit, handleQuoteSubmit } from "../handlers/public";
-import { handleMediaUpload } from "../handlers/media";
+import { handleMediaUpload, handleMediaDelete } from "../handlers/media";
 import { sessionMiddleware } from "../middleware/session";
 import { requireMonitoringAccess } from "../middleware/monitoring";
 import { wrapHandler, wrapMiddleware } from "../utils/wrap";
@@ -42,5 +42,11 @@ export function registerRoutes(router: Router, ctx: AppContext) {
     wrapMiddleware(ctx.authRateLimitMiddleware),
     wrapMiddleware(sessionMiddleware),
     wrapHandler(handleMediaUpload),
+  );
+  router.delete(
+    "/api/media/:id",
+    wrapMiddleware(ctx.authRateLimitMiddleware),
+    wrapMiddleware(sessionMiddleware),
+    wrapHandler(handleMediaDelete),
   );
 }
