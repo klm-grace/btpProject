@@ -17,11 +17,14 @@
     "test": "bun test",
     "test:integration": "bun test test/api/ --timeout 15000",
     "typecheck": "bunx tsc --noEmit",
-    "build": "bun build apps/api/index.ts --outdir dist --target bun",
-    "start": "bun run dist/index.js",
+    "build": "bash scripts/build.sh",
+    "start": "bash scripts/start-prod.sh",
     "db:migrate": "bun run apps/api/db/migrate.ts",
     "db:seed": "bun run apps/api/db/seed.ts",
-    "db:status": "bun run apps/api/db/status.ts"
+    "db:status": "bun run apps/api/db/status.ts",
+    "docker:build": "bash scripts/build-docker.sh",
+    "docker:run": "docker run -p 4000:4000 --env-file .env btp-api:latest",
+    "db:prepare": "bash -c \"bun run db:migrate && bun run db:seed\""
   },
   "dependencies": {
     "zod": "^4.4.3"
