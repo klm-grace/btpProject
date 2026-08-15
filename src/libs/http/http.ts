@@ -285,18 +285,23 @@ export function text(body: string, status: number = 200, options: { headers?: Re
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Réponse HTML (text/html).
- *
- * @example
- *   html("<h1>Hello</h1>")
- *   html("<h1>Hello</h1>", 200)
- *   html("<h1>Created</h1>", 201)
+ * html() — Réponse HTML avec sanitization XSS basique.
+ * Échappe les caractères < > & " ' pour empêcher l'injection XSS.
+ * Pour du HTML complexe, utiliser un template engine côté serveur.
  */
 export function html(body: string, status: number = 200, options: { headers?: Record<string, string> } = {}): Response {
-  return new Response(body, {
+  const safeBody = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+  return new Response(safeBody, {
     status,
     headers: {
       "Content-Type": "text/html;charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "X-XSS-Protection": "1; mode=block",
       ...(options.headers ?? {}),
     },
   });
@@ -307,18 +312,27 @@ export function html(body: string, status: number = 200, options: { headers?: Re
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Réponse XML (application/xml).
- * Note: ne fait PAS d'échappement — le caller doit s'assurer que le XML est valide.
+ * xml() — Réponse XML sécurisée.
+ * Bloque les payloads contenant DOCTYPE, SYSTEM, PUBLIC (anti-XXE).
  *
  * @example
  *   xml("<root><item>test</item></root>")
  *   xml("<root>data</root>", 200)
  */
 export function xml(body: string, status: number = 200, options: { headers?: Record<string, string> } = {}): Response {
+  // Anti-XXE: bloquer DOCTYPE et entités externes
+  const normalized = body.toLowerCase();
+  if (/<!\s*doctype/i.test(normalized) || /system\s+["'`]/i.test(normalized) || /public\s+["'`]/i.test(normalized)) {
+    return new Response(
+      JSON.stringify({ success: false, error: { code: "INVALID_XML", message: "DOCTYPE and external entities not allowed in XML responses" } }),
+      { status: 400, headers: { "Content-Type": "application/json;charset=utf-8" } }
+    );
+  }
   return new Response(body, {
     status,
     headers: {
       "Content-Type": "application/xml;charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
       ...(options.headers ?? {}),
     },
   });
