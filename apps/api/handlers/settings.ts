@@ -101,7 +101,7 @@ export const handleSettingsUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = settingWriteSchema.parse(body);
 
     if (parsed.key !== key) {
@@ -211,7 +211,7 @@ export const handleSettingsBatchUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = settingsBatchSchema.parse(body);
 
     for (const [key, value] of Object.entries(parsed)) {

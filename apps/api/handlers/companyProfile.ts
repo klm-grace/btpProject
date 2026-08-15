@@ -60,7 +60,7 @@ export const handleUpdateCompanyProfile: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = companyUpdateSchema.parse(body);
 
     // Get existing profile
@@ -125,6 +125,7 @@ export const handleUpdateCompanyProfile: RouteHandler = async (req, ctx) => {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
+    app.log.error("Company profile update error", { error: (e as Error).message, stack: (e as Error).stack });
     return jsonErrorResponse({ message: "Erreur lors de la mise à jour", code: "INTERNAL_ERROR" }, 500);
   }
 };

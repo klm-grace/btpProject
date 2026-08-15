@@ -1,0 +1,2 @@
+#!/bin/sh
+exec uvx --with 'mcp>=1.28,<2' zebbern-kali-mcp

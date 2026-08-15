@@ -109,7 +109,7 @@ export const handleCategoryCreate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = categoryCreateSchema.parse(body);
 
     await app.db.sql.unsafe(
@@ -155,7 +155,7 @@ export const handleCategoryUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = categoryUpdateSchema.parse(body);
 
     const existing = await app.db.sql`
@@ -352,7 +352,7 @@ export const handleProjectCreate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = projectCreateSchema.parse(body);
     const projectId = randomUUID();
 
@@ -416,7 +416,7 @@ export const handleProjectUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = projectUpdateSchema.parse(body);
 
     const existing = await app.db.sql`
@@ -617,7 +617,7 @@ export const handleProjectAddImage: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const { mediaId, sortOrder = 0, isCover = false } = z.object({
       mediaId: z.string().uuid(),
       sortOrder: z.number().int().min(0).default(0),
@@ -677,7 +677,7 @@ export const handleProjectUpdateImage: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const { sortOrder, isCover } = z.object({
       sortOrder: z.number().int().min(0).optional(),
       isCover: z.boolean().optional(),
@@ -760,7 +760,7 @@ export const handleProjectAddCategory: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const { categoryId } = z.object({
       categoryId: z.string().uuid(),
     }).parse(body);

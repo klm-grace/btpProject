@@ -110,7 +110,7 @@ export const handleSeoMetaCreate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = seoMetaCreateSchema.parse(body);
     const id = randomUUID();
 
@@ -157,7 +157,7 @@ export const handleSeoMetaUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = seoMetaUpdateSchema.parse(body);
 
     const existing = await app.db.sql.unsafe(

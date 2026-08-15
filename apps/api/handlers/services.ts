@@ -135,7 +135,7 @@ export const handleServiceCreate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = serviceCreateSchema.parse(body);
     const id = randomUUID();
 
@@ -157,6 +157,7 @@ export const handleServiceCreate: RouteHandler = async (req, ctx) => {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
+    app.log.error("Service create error", { error: (e as Error).message, stack: (e as Error).stack });
     const dbErr = mapDbError(e);
     return jsonErrorResponse({ message: dbErr.message, code: dbErr.code }, 409);
   }
@@ -182,7 +183,7 @@ export const handleServiceUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = serviceUpdateSchema.parse(body);
 
     const existing = await app.db.sql`SELECT * FROM services WHERE id = ${serviceId} AND deleted_at IS NULL`;
@@ -222,6 +223,7 @@ export const handleServiceUpdate: RouteHandler = async (req, ctx) => {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
+    app.log.error("Service create error", { error: (e as Error).message, stack: (e as Error).stack });
     const dbErr = mapDbError(e);
     return jsonErrorResponse({ message: dbErr.message, code: dbErr.code }, 409);
   }

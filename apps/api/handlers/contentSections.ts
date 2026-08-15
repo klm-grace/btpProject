@@ -111,7 +111,7 @@ export const handleContentSectionCreate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = sectionCreateSchema.parse(body);
     const id = randomUUID();
 
@@ -158,7 +158,7 @@ export const handleContentSectionUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = sectionUpdateSchema.parse(body);
 
     const existing = await app.db.sql.unsafe(

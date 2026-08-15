@@ -67,7 +67,7 @@ export const handleTeamCreate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = memberCreateSchema.parse(body);
     const id = randomUUID();
 
@@ -89,6 +89,7 @@ export const handleTeamCreate: RouteHandler = async (req, ctx) => {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
+    app.log.error("Team create error", { error: (e as Error).message, stack: (e as Error).stack });
     return jsonErrorResponse({ message: "Erreur lors de l'enregistrement", code: "INTERNAL_ERROR" }, 500);
   }
 };
@@ -113,7 +114,7 @@ export const handleTeamUpdate: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    const body = await req.json();
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = memberUpdateSchema.parse(body);
 
     const existing = await app.db.sql`SELECT * FROM team_members WHERE id = ${memberId} AND deleted_at IS NULL`;

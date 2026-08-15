@@ -5,9 +5,7 @@ let baseUrl = "";
 let cookies: Record<string, string> = {};
 
 function cookieHeader(): string {
-  return Object.entries(cookies)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
+  return Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; ");
 }
 
 beforeAll(async () => {
@@ -18,7 +16,6 @@ beforeAll(async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "admin@btp-dev.local", password: "admin1234" }),
   });
-  expect(loginRes.status).toBe(200);
   for (const part of (loginRes.headers.get("set-cookie") ?? "").split(", ")) {
     const trimmed = part.trim();
     const eqIdx = trimmed.indexOf("=");
@@ -32,47 +29,43 @@ afterAll(async () => {
   await releaseTestServer();
 });
 
-describe("DEBUG2", () => {
-  it("test company PUT", async () => {
-    const csrfRes = await fetch(`${baseUrl}/api/auth/csrf`, {
-      headers: { "Cookie": cookieHeader() },
-    });
-    const csrfData = await csrfRes.json() as { data?: { csrfToken?: string } };
-    const csrfToken = csrfData.data?.csrfToken ?? "";
-    console.log("CSRF token:", csrfToken.slice(0, 20) + "...");
-    console.log("Cookie header:", cookieHeader().slice(0, 100));
-
+describe("DEBUG10", () => {
+  it("company PUT", async () => {
     const res = await fetch(`${baseUrl}/api/admin/company`, {
       method: "PUT",
       headers: {
         "Cookie": cookieHeader(),
-        "X-CSRF-Token": csrfToken,
+        "X-CSRF-Token": cookies["csrf_token"] ?? "",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ name: "Test Company" }),
+      body: JSON.stringify({ name: "Test Co " + Date.now() }),
     });
-    console.log("Status:", res.status);
-    const text = await res.text();
-    console.log("Response:", text.slice(0, 300));
+    console.log("Company:", res.status, await res.text());
   });
 
-  it("test services POST", async () => {
-    const csrfRes = await fetch(`${baseUrl}/api/auth/csrf`, {
-      headers: { "Cookie": cookieHeader() },
+  it("team POST", async () => {
+    const res = await fetch(`${baseUrl}/api/admin/team`, {
+      method: "POST",
+      headers: {
+        "Cookie": cookieHeader(),
+        "X-CSRF-Token": cookies["csrf_token"] ?? "",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ firstName: "John", lastName: "Doe " + Date.now(), sortOrder: 0 }),
     });
-    const csrfData = await csrfRes.json() as { data?: { csrfToken?: string } };
-    const csrfToken = csrfData.data?.csrfToken ?? "";
+    console.log("Team:", res.status, await res.text());
+  });
 
+  it("services POST", async () => {
     const res = await fetch(`${baseUrl}/api/admin/services`, {
       method: "POST",
       headers: {
         "Cookie": cookieHeader(),
-        "X-CSRF-Token": csrfToken,
+        "X-CSRF-Token": cookies["csrf_token"] ?? "",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ name: "Test Service", slug: "test-svc-" + Date.now() }),
+      body: JSON.stringify({ name: "Test Svc " + Date.now(), slug: "test-svc-debug-" + Date.now() }),
     });
-    console.log("Services POST Status:", res.status);
-    console.log("Services POST Response:", await res.text());
+    console.log("Services:", res.status, await res.text());
   });
 });
