@@ -1,8 +1,11 @@
-# Infrastructure locale de développement — PostgreSQL + Redis
-# Bind STRICTEMENT sur 127.0.0.1 (jamais 0.0.0.0)
-# Credentials de dev uniquement via .env (jamais hardcodés dans le code app)
+# Infrastructure complète — PostgreSQL + Redis + ELK Stack
+# Version: Docker Compose v5.4.0 / Elastic 9.5.1
 
 services:
+  # ==========================================
+  # BASE INFRASTRUCTURE
+  # ==========================================
+  
   postgres:
     image: postgres:18-alpine
     container_name: btp-postgres
@@ -14,8 +17,6 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      # PG 18+ : monter /var/lib/postgresql (pas /var/lib/postgresql/data)
-      # pour permettre pg_upgrade propre ; les données vivent dans data/db.
       - ./data/db:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-btp_dev} -d ${POSTGRES_DB:-btp_dev}"]
@@ -30,8 +31,6 @@ services:
     image: redis:alpine
     container_name: btp-redis
     restart: unless-stopped
-    # Mot de passe dev via .env (placeholder dans .env.example) — non exposé publiquement.
-    # protected-mode actif + mot de passe = connexions uniquement autorisées avec AUTH.
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-btp_dev_redis_password}
     command: >
@@ -43,12 +42,89 @@ services:
       - ./data/redis:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
-      interval: 5s
+      interval: 3s
       timeout: 3s
       retries: 10
       start_period: 5s
     networks:
       - btp-internal
+
+  # ==========================================
+  # ELK STACK
+  # ==========================================
+  
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.1
+    container_name: btp-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.transport.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=btp-cluster
+      - ELASTIC_PASSWORD=btp-elastic-2026!
+    ports:
+      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:9300:9300"
+    volumes:
+      - ./logs/elasticsearch:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - btp-internal
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:9.5.1
+    container_name: btp-logstash
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5044:5044"
+    volumes:
+      - ./config/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./logs:/app/logs:ro
+    environment:
+      - LS_JAVA_OPTS=-Xmx256m -Xms256m
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - btp-internal
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.5.1
+    container_name: btp-kibana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=kibana-system-password
+      - SERVER_NAME=Kibana
+      - NODE_OPTIONS=--max-old-space-size=2048
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./logs/kibana:/usr/share/kibana/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:5601/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - btp-internal
+
+  # ==========================================
+  # APPLICATION
+  # ==========================================
 
   api:
     build:
