@@ -25,12 +25,12 @@ const categoryUpdateSchema = z.object({
 });
 
 const projectCreateSchema = z.object({
-  status: z.enum(["draft", "published", "archived"]).default("draft"),
   title: z.string().min(1).max(200),
   slug: z.string().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug invalide"),
   description: z.string().max(5000).optional().nullable(),
   location: z.string().max(200).optional().nullable(),
   year: z.number().int().min(1900).max(new Date().getFullYear() + 10).optional().nullable(),
+  status: z.enum(["draft", "published", "archived"]).default("draft"),
   categoryIds: z.array(z.string().uuid()).optional(),
 });
 
@@ -62,7 +62,8 @@ export const handleCategoryList: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  // Vérifier la permission
+  const permCheck = await app.rbac.checkPermission(user, "portfolio:read");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -250,25 +251,17 @@ export const handleProjectList: RouteHandler = async (req, ctx) => {
   const page = parseInt(url.searchParams.get("page") ?? "1") || 1;
   const limit = parseInt(url.searchParams.get("limit") ?? "20") || 20;
   const offset = (page - 1) * limit;
-  const status = url.searchParams.get("status") as "draft" | "published" | "archived" | null;
-
-  const whereClause = status
-    ? `WHERE p.status = ${status} AND p.deleted_at IS NULL`
-    : `WHERE p.deleted_at IS NULL`;
 
   const [rows, total] = await Promise.all([
     app.db.sql.unsafe(`
-      SELECT p.id, p.title, p.slug, p.description, p.location, p.year, p.status, 
+      SELECT p.id, p.title, p.slug, p.description, p.location, p.year, p.status,
              p.created_at, p.updated_at
       FROM projects p
-      ${whereClause}
+      WHERE p.deleted_at IS NULL
       ORDER BY p.updated_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `),
-    app.db.sql.unsafe(`
-      SELECT COUNT(*)::int AS count FROM projects p
-      ${status ? `WHERE p.status = ${status}` : ``} AND p.deleted_at IS NULL
-    `),
+    app.db.sql.unsafe(`SELECT COUNT(*)::int AS count FROM projects WHERE deleted_at IS NULL`),
   ]);
 
   return jsonOk({
@@ -313,7 +306,6 @@ export const handleProjectGet: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Projet non trouvé", code: "NOT_FOUND" }, 404);
   }
 
-  // Récupérer les catégories associées
   const categories = await app.db.sql`
     SELECT c.id, c.name, c.slug
     FROM categories c
@@ -321,7 +313,6 @@ export const handleProjectGet: RouteHandler = async (req, ctx) => {
     WHERE pc.project_id = ${projectId}
   `;
 
-  // Récupérer les images
   const images = await app.db.sql`
     SELECT pi.id, pi.media_id, pi.sort_order, pi.is_cover, m.original_name, m.mime_type
     FROM project_images pi
@@ -365,19 +356,14 @@ export const handleProjectCreate: RouteHandler = async (req, ctx) => {
     const parsed = projectCreateSchema.parse(body);
     const projectId = randomUUID();
 
-    await app.db.sql.unsafe(`
-      BEGIN
-    `);
-
+    await app.db.sql.unsafe(`BEGIN`);
     try {
-      // Créer le projet
       await app.db.sql.unsafe(
         `INSERT INTO projects (id, title, slug, description, location, year, status, version, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 1, NOW(), NOW())`,
         [projectId, parsed.title, parsed.slug, parsed.description ?? null, parsed.location ?? null, parsed.year ?? null, parsed.status],
       );
 
-      // Associer les catégories
       if (parsed.categoryIds && parsed.categoryIds.length > 0) {
         for (const catId of parsed.categoryIds) {
           await app.db.sql.unsafe(
@@ -388,20 +374,19 @@ export const handleProjectCreate: RouteHandler = async (req, ctx) => {
       }
 
       await app.db.sql.unsafe(`COMMIT`);
-
-      // Audit log
-      await app.db.sql.unsafe(
-        `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_data, created_at)
-         VALUES ($1, $2, 'create', 'project', $3, $4, NOW())`,
-        [randomUUID(), user.id, projectId, JSON.stringify({ title: parsed.title, slug: parsed.slug, status: parsed.status })],
-      );
-
-      app.log.info("Project created", { userId: user.id, projectId });
-      return jsonOk({ id: projectId, message: "Projet créé" }, 201);
     } catch (txErr) {
       await app.db.sql.unsafe(`ROLLBACK`);
       throw txErr;
     }
+
+    await app.db.sql.unsafe(
+      `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_data, created_at)
+       VALUES ($1, $2, 'create', 'project', $3, $4, NOW())`,
+      [randomUUID(), user.id, projectId, JSON.stringify({ title: parsed.title, slug: parsed.slug, status: parsed.status })],
+    );
+
+    app.log.info("Project created", { userId: user.id, projectId });
+    return jsonOk({ id: projectId, message: "Projet créé" }, 201);
   } catch (e) {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
@@ -466,7 +451,6 @@ export const handleProjectUpdate: RouteHandler = async (req, ctx) => {
          parsed.location ?? null, parsed.year ?? null, parsed.status ?? null, projectId],
       );
 
-      // Mettre à jour les catégories si fournies
       if (parsed.categoryIds !== undefined) {
         await app.db.sql.unsafe(
           `DELETE FROM project_categories WHERE project_id = $1`,
@@ -483,19 +467,19 @@ export const handleProjectUpdate: RouteHandler = async (req, ctx) => {
       }
 
       await app.db.sql.unsafe(`COMMIT`);
-
-      await app.db.sql.unsafe(
-        `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, old_data, new_data, created_at)
-         VALUES ($1, $2, 'update', 'project', $3, $4, $5, NOW())`,
-        [randomUUID(), user.id, projectId, JSON.stringify(oldData), JSON.stringify(parsed)],
-      );
-
-      app.log.info("Project updated", { userId: user.id, projectId });
-      return jsonOk({ message: "Projet mis à jour" });
     } catch (txErr) {
       await app.db.sql.unsafe(`ROLLBACK`);
       throw txErr;
     }
+
+    await app.db.sql.unsafe(
+      `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, old_data, new_data, created_at)
+       VALUES ($1, $2, 'update', 'project', $3, $4, $5, NOW())`,
+      [randomUUID(), user.id, projectId, JSON.stringify(oldData), JSON.stringify(parsed)],
+    );
+
+    app.log.info("Project updated", { userId: user.id, projectId });
+    return jsonOk({ message: "Projet mis à jour" });
   } catch (e) {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
@@ -531,7 +515,6 @@ export const handleProjectDelete: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Projet non trouvé", code: "NOT_FOUND" }, 404);
   }
 
-  // Soft delete
   await app.db.sql`
     UPDATE projects SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${projectId}
   `;
@@ -641,13 +624,11 @@ export const handleProjectAddImage: RouteHandler = async (req, ctx) => {
       isCover: z.boolean().default(false),
     }).parse(body);
 
-    // Vérifier que le projet existe
     const project = await app.db.sql`SELECT id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL`;
     if (project.length === 0) {
       return jsonErrorResponse({ message: "Projet non trouvé", code: "NOT_FOUND" }, 404);
     }
 
-    // Vérifier que le média existe
     const media = await app.db.sql`SELECT id FROM media WHERE id = ${mediaId}`;
     if (media.length === 0) {
       return jsonErrorResponse({ message: "Média non trouvé", code: "NOT_FOUND" }, 404);
@@ -672,7 +653,7 @@ export const handleProjectAddImage: RouteHandler = async (req, ctx) => {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
-    return jsonErrorResponse({ message: "Erreur lors de l'ajout", code: "ERROR" }, 500);
+    return jsonErrorResponse({ message: "Erreur", code: "ERROR" }, 500);
   }
 };
 
@@ -784,19 +765,16 @@ export const handleProjectAddCategory: RouteHandler = async (req, ctx) => {
       categoryId: z.string().uuid(),
     }).parse(body);
 
-    // Vérifier le projet
     const project = await app.db.sql`SELECT id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL`;
     if (project.length === 0) {
       return jsonErrorResponse({ message: "Projet non trouvé", code: "NOT_FOUND" }, 404);
     }
 
-    // Vérifier la catégorie
     const category = await app.db.sql`SELECT id FROM categories WHERE id = ${categoryId}`;
     if (category.length === 0) {
       return jsonErrorResponse({ message: "Catégorie non trouvée", code: "NOT_FOUND" }, 404);
     }
 
-    // Vérifier l'association existante
     const existing = await app.db.sql`
       SELECT id FROM project_categories WHERE project_id = ${projectId} AND category_id = ${categoryId}
     `;
