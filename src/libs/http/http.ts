@@ -67,7 +67,7 @@ function safeStringify(value: unknown, replacer?: (key: string, value: unknown) 
   const seen = new WeakSet<object>();
 
   function serializer(key: string, value: unknown): unknown {
-    //undefined → supprimer la clé
+    // undefined → supprimer la clé
     if (value === undefined) return undefined;
 
     // BigInt → string
@@ -83,7 +83,7 @@ function safeStringify(value: unknown, replacer?: (key: string, value: unknown) 
     return replacer ? replacer(key, value) : value;
   }
 
-  return JSON.stringify(value, serializer as Parameters<typeof JSON.stringify>[1]);
+  return JSON.stringify(value, serializer);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,7 +241,7 @@ export function jsonStream(
     ...(options.headers ?? {}),
   };
 
-  let bodyValue: BodyInit;
+  let bodyValue: string | Uint8Array | Blob | ReadableStream<Uint8Array>;
   if (typeof body === "string") {
     bodyValue = body;
   } else if (body instanceof Uint8Array) {

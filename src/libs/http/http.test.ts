@@ -58,7 +58,7 @@ describe("json() — helper principal", () => {
   it("ne fuit pas de données sensibles", async () => {
     const res = json({ password: "secret123" });
     const body = JSON.parse(await res.text()) as Record<string, unknown>;
-    expect(body.data.password).toBe("secret123");
+    expect((body as { data: Record<string, unknown> }).data.password).toBe("secret123");
     // Le handler doit choisir de ne pas inclure le password
   });
 });
@@ -108,13 +108,13 @@ describe("jsonError() — erreur explicite", () => {
 
   it("injecte requestId si fourni", async () => {
     const res = jsonError({ code: "ERR", message: "msg", requestId: "req-789" });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; error: { code: string; message: string; requestId?: string; details?: Record<string, unknown> } };
     expect(body.error.requestId).toBe("req-789");
   });
 
   it("injecte details si fournis", async () => {
     const res = jsonError({ code: "VALIDATION", message: "Invalid", details: { field: "email" } });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; error: { code: string; message: string; requestId?: string; details?: Record<string, unknown> } };
     expect(body.error.details).toEqual({ field: "email" });
   });
 });
@@ -139,7 +139,7 @@ describe("jsonPaginated() — pagination", () => {
 
   it("total = 0 → totalPages = 0", async () => {
     const res = jsonPaginated([], 1, 10, 0);
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; data: unknown[]; meta: { page: number; pageSize: number; total: number; totalPages: number } };
     expect(body.meta.totalPages).toBe(0);
   });
 
@@ -190,14 +190,14 @@ describe("sécurité — fuites de données", () => {
   it("jsonOk ne fuit pas de stack trace", async () => {
     const err = new Error("Database connection failed: postgres://admin:pass@db:5432");
     const res = jsonError({ code: "DB_ERROR", message: "Query failed" });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; error: { code: string; message: string } };
     expect(body.error.message).toBe("Query failed");
     expect(body.error.message).not.toContain("postgres");
   });
 
   it("json() ne fuit pas de credentials", async () => {
     const res = json({ error: "Auth failed" }, 401, { code: "AUTH_FAILED" });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; error: { code: string; message: string } };
     expect(body).toEqual({ success: false, error: { code: "AUTH_FAILED", message: "Auth failed" } });
   });
 });
@@ -205,7 +205,7 @@ describe("sécurité — fuites de données", () => {
 describe("sérialisation sûre", () => {
   it("BigInt → string", async () => {
     const res = jsonOk({ count: BigInt(9007199254740991) });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; data: { count: string } };
     expect(body.data.count).toBe("9007199254740991");
   });
 
@@ -213,13 +213,13 @@ describe("sérialisation sûre", () => {
     const cyc: any = { name: "test" };
     cyc.self = cyc;
     const res = jsonOk(cyc);
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; data: { name: string; self: string } };
     expect(body.data.self).toBe("[Circular]");
   });
 
   it("undefined → supprimé", async () => {
     const res = jsonOk({ name: "Jean", secret: undefined });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; data: { name: string } };
     expect(body.data).toEqual({ name: "Jean" });
     expect("secret" in body.data).toBe(false);
   });
@@ -227,13 +227,13 @@ describe("sérialisation sûre", () => {
   it("Date → ISO string (natif)", async () => {
     const d = new Date("2024-01-01T00:00:00.000Z");
     const res = jsonOk({ created: d });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; data: { created: string } };
     expect(body.data.created).toBe("2024-01-01T00:00:00.000Z");
   });
 
   it("symbol → ignoré (comportement natif)", async () => {
     const res = jsonOk({ [Symbol("id")]: 1, name: "Jean" });
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    const body = JSON.parse(await res.text()) as { success: boolean; data: { name: string } };
     expect(body.data).toEqual({ name: "Jean" });
   });
 });
