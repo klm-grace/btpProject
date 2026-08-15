@@ -1,0 +1,21 @@
+bru
+---
+name: Body Middleware - Text
+description: Tests du parser text/plain
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: text/plain
+
+Bonjour le monde
+
+---
+name: Text trop long
+description: Retourne 413 BODY_TOO_LARGE
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: text/plain
+X-Test-Text-Max: 10
+
+xxxxxxxxxxxxxxxxxxxxxxxxxx

@@ -1,0 +1,65 @@
+bru
+---
+name: Body Middleware - JSON
+description: Tests du parser JSON avec protections
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "name": "Jean"
+}
+
+---
+name: JSON invalide
+description: Retourne 400 INVALID_JSON
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: application/json
+
+{ invalid json }
+
+---
+name: JSON trop profond
+description: Retourne 400 JSON_MAX_DEPTH
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: application/json
+X-Test-Depth-Limit: 3
+
+{"a":{"b":{"c":{"d":{"e":1}}}}}
+
+---
+name: Prototype pollution __proto__
+description: Retourne 400 PROTOTYPE_POLLUTION
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: application/json
+
+{"__proto__":{"admin":true}}
+
+---
+name: Prototype pollution constructor
+description: Retourne 400 PROTOTYPE_POLLUTION
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: application/json
+
+{"constructor":{"args":"evil"}}
+
+---
+name: Chunked encoding rejected
+description: Retourne 400 CHUNKED_ENCODING_NOT_ALLOWED
+---
+
+POST http://localhost:3000/api/test/body
+Content-Type: application/json
+Transfer-Encoding: chunked
+
+{"email":"test@example.com"}

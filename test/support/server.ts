@@ -190,7 +190,16 @@ export async function getTestServer(): Promise<ApiServer> {
   // Body middleware — limites selon Content-Type
   const bodyMiddleware = createBodyMiddleware({
     jsonMaxBytes: 4 * 1024,
+    jsonMaxDepth: 32,
+    formMaxBytes: 4 * 1024,
+    formMaxKeys: 100,
+    formKeyMaxBytes: 100,
+    textMaxBytes: 1024,
+    xmlMaxBytes: 100 * 1024,
+    xmlMaxDepth: 16,
+    xmlMaxElements: 1000,
     multipartMaxBytes: 10 * 1024 * 1024,
+    readTimeoutMs: 5000,
   });
 
   const router = createRouter();
