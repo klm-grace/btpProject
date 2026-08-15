@@ -66,7 +66,7 @@ export const handleContactSubmit: RouteHandler = async (req, ctx) => {
     });
 
     app.log.info("Contact form submitted", { email, consent });
-    return jsonOk({ success: true });
+    return jsonOk({});
   } catch (e: unknown) {
     if (e instanceof Error && e.message === "invalid_json_body") {
       return jsonErrorResponse({ message: "Invalid JSON", code: "INVALID_JSON" }, 400);
@@ -113,7 +113,7 @@ export const handleQuoteSubmit: RouteHandler = async (req, ctx) => {
     });
 
     app.log.info("Quote form submitted", { email });
-    return jsonOk({ success: true });
+    return jsonOk({});
   } catch (e: unknown) {
     if (e instanceof Error && e.message === "invalid_json_body") {
       return jsonErrorResponse({ message: "Invalid JSON", code: "INVALID_JSON" }, 400);

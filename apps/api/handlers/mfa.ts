@@ -51,7 +51,7 @@ export const handleMfaVerify: RouteHandler = async (req, ctx) => {
       return jsonErrorResponse({ message: loginResult.error, code: "AUTH_FAILED" }, 401);
     }
 
-    const res = jsonOk({ success: true, user: loginResult.user });
+    const res = jsonOk({ user: loginResult.user });
     res.headers.append("Set-Cookie", `${COOKIE_NAMES.session}=${loginResult.token}; HttpOnly; Secure; SameSite=Strict; Max-Age=${app.config.sessionExpiryHours * 3600}`);
 
     const csrfToken = await app.csrf.generate();

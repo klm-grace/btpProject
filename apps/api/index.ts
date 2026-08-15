@@ -18,6 +18,7 @@ import { createOutbox, type OutboxDeps, type OutboxConfig } from "@libs/outbox";
 import { createStorage } from "@libs/storage";
 import { createUpload } from "@libs/upload";
 import { createBodyMiddleware } from "@libs/body";
+import { jsonError } from "@libs/http";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
 import type { RbacDeps, RbacConfig } from "@libs/rbac/types";
 import type { CsrfConfig } from "@libs/csrf/types";
@@ -211,10 +212,7 @@ async function bootstrap() {
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       log.error("Unhandled API error", { error: err, requestId });
-      return new Response(JSON.stringify({ error: "Internal Server Error" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonError({ code: "INTERNAL_ERROR", message: "Internal Server Error" }, 500);
     }
   };
 

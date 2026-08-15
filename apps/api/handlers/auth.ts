@@ -74,7 +74,7 @@ export const handleLogin: RouteHandler = async (req, ctx) => {
       return jsonErrorResponse({ message: result.error, code: "AUTH_FAILED" }, 401);
     }
 
-    const res = jsonOk({ success: true, user: result.user });
+    const res = jsonOk({ user: result.user });
 
     // Session cookie
     res.headers.append("Set-Cookie", `${COOKIE_NAMES.session}=${result.token}; HttpOnly; Secure; SameSite=Strict; Max-Age=${app.config.sessionExpiryHours * 3600}`);
@@ -103,7 +103,7 @@ export const handleLogout: RouteHandler = async (req, ctx) => {
     await app.auth.logout(sessionId);
   }
 
-  const res = jsonOk({ success: true });
+  const res = jsonOk({});
   res.headers.append("Set-Cookie", `${COOKIE_NAMES.session}=; HttpOnly; Secure; SameSite=Strict; Max-Age=0`);
   res.headers.append("Set-Cookie", `${COOKIE_NAMES.csrf}=; Secure; SameSite=Strict; Max-Age=0`);
 
@@ -183,7 +183,7 @@ export const handleChangePassword: RouteHandler = async (req, ctx) => {
     }
 
     // Token rotation : toutes les sessions sont révoquées par changePassword
-    return jsonOk({ success: true, message: "Password changed successfully" });
+    return jsonOk({ message: "Password changed successfully" });
   } catch (e: unknown) {
     if (e instanceof Error && e.message === "invalid_json_body") {
       return jsonErrorResponse({ message: "Invalid JSON", code: "INVALID_JSON" }, 400);
@@ -201,7 +201,7 @@ export const handleGetCsrf: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
   try {
     const token = app.csrf.generate();
-    return jsonOk({ success: true, csrfToken: token });
+    return jsonOk({ csrfToken: token });
   } catch (e: unknown) {
     app.log.error("Get CSRF error", { error: e });
     return jsonErrorResponse({ message: "Internal Server Error", code: "INTERNAL_ERROR" }, 500);

@@ -27,5 +27,5 @@ export const handleHealth: RouteHandler = async (req, ctx) => {
  */
 export const handleReady: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
-  return jsonOk({ success: true, timestamp: new Date().toISOString() });
+  return jsonOk({ timestamp: new Date().toISOString() });
 };
