@@ -213,11 +213,21 @@ class XmlSaxParser {
   }
 
   private readEntity(): string {
+    // Consommer le & initial
+    if (this.pos >= this.xml.length || this.xml[this.pos]! !== "&") return "";
+    this.pos++; // skip '&'
+
+    // Lire le nom de l'entité (sans le ;)
     let entity = "";
-    while (this.pos < this.xml.length && /[a-zA-Z0-9#_;]/.test(this.xml[this.pos]!)) {
+    while (this.pos < this.xml.length && this.xml[this.pos]! !== ";" && /[a-zA-Z0-9#_]/.test(this.xml[this.pos]!)) {
       entity += this.xml[this.pos]!;
       this.pos++;
     }
+    // Consommer le ; si présent
+    if (this.pos < this.xml.length && this.xml[this.pos]! === ";") {
+      this.pos++;
+    }
+
     // Mapping basique des entités HTML
     const mappings: Record<string, string> = {
       "amp": "&",
@@ -226,8 +236,25 @@ class XmlSaxParser {
       "quot": '"',
       "apos": "'",
     };
-    const semicolon = entity.endsWith(";") ? entity.slice(0, -1) : entity;
-    return mappings[semicolon] ?? `&${entity}`;
+
+    // Décode les entités numériques décimales (&#60;) et hexadécimales (&#x3C;)
+    if (entity.startsWith("#x") || entity.startsWith("#X")) {
+      // Hex: &#x3C;
+      const hexPart = entity.slice(2);
+      const codePoint = parseInt(hexPart, 16);
+      if (!isNaN(codePoint) && codePoint > 0 && codePoint < 0x110000) {
+        return String.fromCodePoint(codePoint);
+      }
+    } else if (/^#[0-9]+$/.test(entity)) {
+      // Decimal: &#60;
+      const decPart = entity.slice(1);
+      const codePoint = parseInt(decPart, 10);
+      if (!isNaN(codePoint) && codePoint > 0 && codePoint < 0x110000) {
+        return String.fromCodePoint(codePoint);
+      }
+    }
+
+    return mappings[entity] ?? `&${entity};`;
   }
 
   private readText(): string {
