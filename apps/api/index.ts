@@ -17,7 +17,7 @@ import { createRateLimiter, createRateLimitMiddleware } from "@libs/rate-limit";
 import { createOutbox, type OutboxDeps, type OutboxConfig } from "@libs/outbox";
 import { createStorage } from "@libs/storage";
 import { createUpload } from "@libs/upload";
-import { createBodyChecker } from "@libs/body";
+import { createBodyMiddleware } from "@libs/body";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
 import type { RbacDeps, RbacConfig } from "@libs/rbac/types";
 import type { CsrfConfig } from "@libs/csrf/types";
@@ -137,8 +137,8 @@ async function bootstrap() {
   const outboxDeps: OutboxDeps = { db, log };
   const outbox = createOutbox(outboxDeps, outboxCfg);
 
-  // Body checker — limites selon Content-Type
-  const bodyChecker = createBodyChecker({
+  // Body middleware — limites selon Content-Type
+  const bodyMiddleware = createBodyMiddleware({
     jsonMaxBytes: 4 * 1024, // 4 Ko pour JSON
     multipartMaxBytes: config.storage.maxFileSizeBytes, // 10 Mo pour uploads
   });
@@ -174,16 +174,15 @@ async function bootstrap() {
   };
 
   const router = createRouter();
+  // Body middleware — vérifié AVANT toutes les routes
+  router.use(bodyMiddleware);
   registerRoutes(router, ctx);
 
   const fetchHandler = async (req: Request) => {
     const requestId = getRequestId(req);
 
     try {
-      // Vérification taille body selon Content-Type
-      if (bodyChecker.check(req)) {
-        return new Response("Request entity too large", { status: 413 });
-      }
+      // Le body middleware est géré par router.use() avant les routes
 
       const preflight = cors.handlePreflight(req);
       if (preflight) return preflight;

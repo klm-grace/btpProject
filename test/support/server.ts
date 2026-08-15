@@ -25,7 +25,7 @@ import { createRbac } from "@libs/rbac";
 import { createCsrf } from "@libs/csrf";
 import { createRateLimiter, createRateLimitMiddleware } from "@libs/rate-limit";
 import { createOutbox, type OutboxDeps, type OutboxConfig } from "@libs/outbox";
-import { createBodyChecker } from "@libs/body";
+import { createBodyMiddleware } from "@libs/body";
 import { createStorage } from "@libs/storage";
 import { createUpload } from "@libs/upload";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
@@ -187,22 +187,20 @@ export async function getTestServer(): Promise<ApiServer> {
     storage, upload,
   };
 
-  // Body checker — limites selon Content-Type
-  const bodyChecker = createBodyChecker({
+  // Body middleware — limites selon Content-Type
+  const bodyMiddleware = createBodyMiddleware({
     jsonMaxBytes: 4 * 1024,
     multipartMaxBytes: 10 * 1024 * 1024,
   });
 
   const router = createRouter();
+  // Body middleware — vérifié AVANT toutes les routes
+  router.use(bodyMiddleware);
   registerRoutes(router, ctx);
 
   const fetchHandler = async (req: Request) => {
     const requestId = getRequestId(req);
     try {
-      // Vérification taille body selon Content-Type
-      if (bodyChecker.check(req)) {
-        return new Response("Request entity too large", { status: 413 });
-      }
       const preflight = cors.handlePreflight(req);
       if (preflight) return preflight;
       const response = await router.handle(req, { app: ctx });

@@ -1,9 +1,11 @@
 /**
  * body — Bibliothèque de vérification de la taille des corps de requête.
  *
- * Usage:
- *   const checker = createBodyChecker({ jsonMaxBytes: 4096, multipartMaxBytes: 10_485_760 });
- *   if (checker.check(req)) return new Response("Request entity too large", { status: 413 });
+ * Le checker s'utilise comme un middleware (pattern Express/Hono) :
+ *   const middleware = createBodyMiddleware({ jsonMaxBytes: 4096, multipartMaxBytes: 10_485_760 });
+ *   router.use(middleware);
+ *
+ * Aucune vérification manuelle dans fetchHandler.
  */
 
-export { createBodyChecker, type BodyChecker, type BodyCheckerConfig } from "./body.ts";
+export { createBodyMiddleware, type BodyCheckerConfig } from "./body.ts";
