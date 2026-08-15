@@ -63,7 +63,7 @@ export const handleCategoryList: RouteHandler = async (req, ctx) => {
   }
 
   // Vérifier la permission
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:read");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.read");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -103,7 +103,7 @@ export const handleCategoryCreate: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -144,7 +144,7 @@ export const handleCategoryUpdate: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -204,7 +204,7 @@ export const handleCategoryDelete: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -242,7 +242,7 @@ export const handleProjectList: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:read");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.read");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -284,7 +284,7 @@ export const handleProjectGet: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:read");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.read");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -346,7 +346,7 @@ export const handleProjectCreate: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -405,7 +405,7 @@ export const handleProjectUpdate: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -498,7 +498,7 @@ export const handleProjectDelete: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -538,7 +538,7 @@ export const handleProjectPublish: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -572,7 +572,7 @@ export const handleProjectUnpublish: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -606,7 +606,7 @@ export const handleProjectAddImage: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -666,7 +666,7 @@ export const handleProjectUpdateImage: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -717,7 +717,7 @@ export const handleProjectDeleteImage: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -749,7 +749,7 @@ export const handleProjectAddCategory: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
@@ -806,7 +806,7 @@ export const handleProjectDeleteCategory: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Non authentifié", code: "UNAUTHORIZED" }, 401);
   }
 
-  const permCheck = await app.rbac.checkPermission(user, "portfolio:write");
+  const permCheck = await app.rbac.checkPermission(user, "portfolio.write");
   if (!permCheck.allowed) {
     return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
   }
