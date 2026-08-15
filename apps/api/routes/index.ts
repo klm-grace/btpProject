@@ -27,6 +27,46 @@ import {
   handleProjectAddCategory,
   handleProjectDeleteCategory,
 } from "../handlers/portfolio";
+import {
+  handleGetCompanyProfile,
+  handleUpdateCompanyProfile,
+} from "../handlers/companyProfile";
+import {
+  handleServiceList,
+  handleServiceGet,
+  handleServiceCreate,
+  handleServiceUpdate,
+  handleServiceDelete,
+  handleServicePublish,
+  handleServiceUnpublish,
+} from "../handlers/services";
+import {
+  handleTeamList,
+  handleTeamCreate,
+  handleTeamUpdate,
+  handleTeamDelete,
+} from "../handlers/team";
+import {
+  handleContentSectionList,
+  handleContentSectionGet,
+  handleContentSectionCreate,
+  handleContentSectionUpdate,
+  handleContentSectionDelete,
+} from "../handlers/contentSections";
+import {
+  handleSeoMetaList,
+  handleSeoMetaGet,
+  handleSeoMetaCreate,
+  handleSeoMetaUpdate,
+  handleSeoMetaDelete,
+} from "../handlers/seoMetas";
+import {
+  handleSettingsList,
+  handleSettingsGet,
+  handleSettingsUpdate,
+  handleSettingsDelete,
+  handleSettingsBatchUpdate,
+} from "../handlers/settings";
 import { sessionMiddleware } from "../middleware/session";
 import { requireMonitoringAccess } from "../middleware/monitoring";
 import { wrapHandler, wrapMiddleware } from "../utils/wrap";
@@ -87,4 +127,44 @@ export function registerRoutes(router: Router, ctx: AppContext) {
   router.delete("/api/admin/projects/:id/images/:imageId", wrapMiddleware(sessionMiddleware), wrapHandler(handleProjectDeleteImage));
   router.post("/api/admin/projects/:id/categories", wrapMiddleware(sessionMiddleware), wrapHandler(handleProjectAddCategory));
   router.delete("/api/admin/projects/:id/categories/:categoryId", wrapMiddleware(sessionMiddleware), wrapHandler(handleProjectDeleteCategory));
+
+  // --- Company Profile ---
+  router.get("/api/admin/company", wrapMiddleware(sessionMiddleware), wrapHandler(handleGetCompanyProfile));
+  router.put("/api/admin/company", wrapMiddleware(sessionMiddleware), wrapHandler(handleUpdateCompanyProfile));
+
+  // --- Services ---
+  router.get("/api/admin/services", wrapMiddleware(sessionMiddleware), wrapHandler(handleServiceList));
+  router.get("/api/admin/services/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleServiceGet));
+  router.post("/api/admin/services", wrapMiddleware(sessionMiddleware), wrapHandler(handleServiceCreate));
+  router.put("/api/admin/services/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleServiceUpdate));
+  router.delete("/api/admin/services/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleServiceDelete));
+  router.post("/api/admin/services/:id/publish", wrapMiddleware(sessionMiddleware), wrapHandler(handleServicePublish));
+  router.post("/api/admin/services/:id/unpublish", wrapMiddleware(sessionMiddleware), wrapHandler(handleServiceUnpublish));
+
+  // --- Équipe ---
+  router.get("/api/admin/team", wrapMiddleware(sessionMiddleware), wrapHandler(handleTeamList));
+  router.post("/api/admin/team", wrapMiddleware(sessionMiddleware), wrapHandler(handleTeamCreate));
+  router.put("/api/admin/team/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleTeamUpdate));
+  router.delete("/api/admin/team/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleTeamDelete));
+
+  // --- Sections éditoriales ---
+  router.get("/api/admin/content-sections", wrapMiddleware(sessionMiddleware), wrapHandler(handleContentSectionList));
+  router.get("/api/admin/content-sections/:slug", wrapMiddleware(sessionMiddleware), wrapHandler(handleContentSectionGet));
+  router.post("/api/admin/content-sections", wrapMiddleware(sessionMiddleware), wrapHandler(handleContentSectionCreate));
+  router.put("/api/admin/content-sections/:slug", wrapMiddleware(sessionMiddleware), wrapHandler(handleContentSectionUpdate));
+  router.delete("/api/admin/content-sections/:slug", wrapMiddleware(sessionMiddleware), wrapHandler(handleContentSectionDelete));
+
+  // --- SEO Metas ---
+  router.get("/api/admin/seo-metas", wrapMiddleware(sessionMiddleware), wrapHandler(handleSeoMetaList));
+  router.get("/api/admin/seo-metas/:entityType/:entityId", wrapMiddleware(sessionMiddleware), wrapHandler(handleSeoMetaGet));
+  router.post("/api/admin/seo-metas", wrapMiddleware(sessionMiddleware), wrapHandler(handleSeoMetaCreate));
+  router.put("/api/admin/seo-metas/:entityType/:entityId", wrapMiddleware(sessionMiddleware), wrapHandler(handleSeoMetaUpdate));
+  router.delete("/api/admin/seo-metas/:entityType/:entityId", wrapMiddleware(sessionMiddleware), wrapHandler(handleSeoMetaDelete));
+
+  // --- Settings ---
+  router.get("/api/admin/settings", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsList));
+  router.get("/api/admin/settings/:key", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsGet));
+  router.put("/api/admin/settings/:key", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsUpdate));
+  router.delete("/api/admin/settings/:key", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsDelete));
+  router.post("/api/admin/settings/batch", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsBatchUpdate));
 }
