@@ -6,8 +6,10 @@ let cookies: Record<string, string> = {};
 
 function parseCookies(setCookieHeader: string): Record<string, string> {
   const c: Record<string, string> = {};
-  for (const part of setCookieHeader.split("; ")) {
-    const trimmed = part.trim();
+  // Set-Cookie header separates multiple cookies with ', '
+  // Each cookie has attributes separated by '; '
+  for (const cookie of setCookieHeader.split(", ")) {
+    const trimmed = cookie.trim();
     const eqIdx = trimmed.indexOf("=");
     if (eqIdx > 0) {
       const name = trimmed.slice(0, eqIdx).trim();
