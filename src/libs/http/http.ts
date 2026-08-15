@@ -285,18 +285,18 @@ export function text(body: string, status: number = 200, options: { headers?: Re
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * html() — Réponse HTML avec sanitization XSS basique.
- * Échappe les caractères < > & " ' pour empêcher l'injection XSS.
- * Pour du HTML complexe, utiliser un template engine côté serveur.
+ * Réponse HTML (text/html).
+ * Le HTML est retourné TEL QUEL — le caller doit sanitiser le contenu utilisateur.
+ * Security headers auto: X-Content-Type-Options: nosniff, X-XSS-Protection.
+ * Pour du contenu utilisateur, utiliser htmlEscape() ou un sanitizeur (DOMPurify).
+ *
+ * @example
+ *   html("<h1>Hello</h1>")                          // HTML trusted
+ *   html("<h1>Hello</h1>", 201)
+ *   html(htmlEscape("<h1>" + userInput + "</h1>"))  // HTML with user content
  */
 export function html(body: string, status: number = 200, options: { headers?: Record<string, string> } = {}): Response {
-  const safeBody = body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#x27;");
-  return new Response(safeBody, {
+  return new Response(body, {
     status,
     headers: {
       "Content-Type": "text/html;charset=utf-8",
@@ -305,6 +305,23 @@ export function html(body: string, status: number = 200, options: { headers?: Re
       ...(options.headers ?? {}),
     },
   });
+}
+
+/**
+ * Échappe le HTML pour insérer du contenu utilisateur en toute sécurité.
+ * À utiliser quand le HTML contient des données provenant de l'utilisateur.
+ *
+ * @example
+ *   htmlEscape("<script>alert(1)</script>")  // → "&lt;script&gt;alert(1)&lt;/script&gt;"
+ *   htmlEscape('Hello "world"')              // → "Hello &quot;world&quot;"
+ */
+export function htmlEscape(html: string): string {
+  return html
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -6,6 +6,12 @@ import {
   jsonErrorResponse,
   jsonPaginated,
   jsonStream,
+  text,
+  html,
+  htmlEscape,
+  xml,
+  notFound,
+  send,
 } from "./http.ts";
 
 async function parseResponse(res: Response): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -248,5 +254,112 @@ describe("sérialisation sûre", () => {
     const res = jsonOk({ [Symbol("id")]: 1, name: "Jean" });
     const body = JSON.parse(await res.text()) as { success: boolean; data: { name: string } };
     expect(body.data).toEqual({ name: "Jean" });
+  });
+});
+
+describe("html() — réponse HTML", () => {
+  it("retourne le HTML tel quel", async () => {
+    const res = html("<h1 class='title'>Hello <strong>World</strong></h1>");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toBe("<h1 class='title'>Hello <strong>World</strong></h1>");
+  });
+
+  it("ajoute les headers de sécurité", async () => {
+    const res = html("<h1>test</h1>");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("x-xss-protection")).toBe("1; mode=block");
+  });
+
+  it("accepte un status custom", async () => {
+    const res = html("<h1>Created</h1>", 201);
+    expect(res.status).toBe(201);
+  });
+});
+
+describe("htmlEscape() — échappement XSS", () => {
+  it("échappe < > & \" '", async () => {
+    expect(htmlEscape("<script>alert(1)</script>")).toBe("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(htmlEscape('Hello "world"')).toBe("Hello &quot;world&quot;");
+    expect(htmlEscape("Tom & Jerry")).toBe("Tom &amp; Jerry");
+    expect(htmlEscape("it's")).toBe("it&#x27;s");
+  });
+
+  it("laisse le texte normal intact", async () => {
+    expect(htmlEscape("Hello World")).toBe("Hello World");
+    expect(htmlEscape("123")).toBe("123");
+  });
+});
+
+describe("xml() — réponse XML sécurisée", () => {
+  it("retourne du XML valide", async () => {
+    const res = xml("<root><item>test</item></root>");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/xml");
+    expect(await res.text()).toBe("<root><item>test</item></root>");
+  });
+
+  it("bloque DOCTYPE (XXE)", async () => {
+    const res = xml('<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><root/>');
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text()) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_XML");
+  });
+
+  it("bloque DOCTYPE mixte case", async () => {
+    const res = xml('<!DoCtYpE foo><root/>');
+    expect(res.status).toBe(400);
+  });
+
+  it("bloque DOCTYPE caché dans commentaire", async () => {
+    const res = xml('<!-- comment --><!DOCTYPE foo><root/>');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("send() — auto-détection", () => {
+  it("string texte → text/plain", async () => {
+    const res = send("Hello World");
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(await res.text()).toBe("Hello World");
+  });
+
+  it("string HTML → text/html", async () => {
+    const res = send("<h1>Hello</h1>");
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toBe("<h1>Hello</h1>");
+  });
+
+  it("string XML → application/xml", async () => {
+    const res = send("<?xml version=\"1.0\"?><root/>");
+    expect(res.headers.get("content-type")).toContain("application/xml");
+  });
+
+  it("objet → application/json", async () => {
+    const res = send({ user: { id: 1 } });
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = JSON.parse(await res.text()) as { success: boolean; data: { user: { id: number } } };
+    expect(body.data.user.id).toBe(1);
+  });
+
+  it("array → application/json", async () => {
+    const res = send([1, 2, 3]);
+    expect(res.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("null → 204", async () => {
+    const res = send(null);
+    expect(res.status).toBe(204);
+  });
+
+  it("undefined → 204", async () => {
+    const res = send(undefined);
+    expect(res.status).toBe(204);
+  });
+
+  it("nombre → application/json", async () => {
+    const res = send(42);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.text()).toContain("42");
   });
 });

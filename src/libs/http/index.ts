@@ -5,4 +5,4 @@
  */
 
 export type { JsonOptions, JsonOkOptions, JsonErrorDetails, JsonStreamOptions } from "./http.ts";
-export { json, jsonOk, jsonError, jsonErrorResponse, jsonPaginated, jsonStream, text, html, xml, notFound, send } from "./http.ts";
+export { json, jsonOk, jsonError, jsonErrorResponse, jsonPaginated, jsonStream, text, html, htmlEscape, xml, notFound, send } from "./http.ts";
