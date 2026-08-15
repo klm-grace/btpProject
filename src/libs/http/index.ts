@@ -1,8 +1,8 @@
 /**
- * Http — helpers de réponse HTTP JSON standardisée.
+ * Http — Helpers de réponse HTTP JSON standardisée.
  *
  * Injection pure : aucune dépendance d'environnement. Aucun port.
  */
 
-export type { JsonOkOptions, JsonErrorDetails } from "./http.ts";
-export { jsonOk, jsonErrorResponse, jsonPaginated } from "./http.ts";
+export type { JsonOptions, JsonOkOptions, JsonErrorDetails, JsonStreamOptions } from "./http.ts";
+export { json, jsonOk, jsonError, jsonErrorResponse, jsonPaginated, jsonStream } from "./http.ts";
