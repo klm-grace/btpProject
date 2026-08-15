@@ -17,6 +17,9 @@ import { createRateLimiter, createRateLimitMiddleware } from "@libs/rate-limit";
 import { createOutbox, type OutboxDeps, type OutboxConfig } from "@libs/outbox";
 import { createStorage } from "@libs/storage";
 import { createUpload } from "@libs/upload";
+import { createPagination } from "@libs/pagination";
+import { createSecurityEvents } from "@libs/security-events";
+import { createAdminRateLimiter } from "@libs/admin-rate-limit";
 import { createBodyMiddleware } from "@libs/body";
 import { jsonError } from "@libs/http";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
@@ -115,6 +118,35 @@ async function bootstrap() {
     errorCode: "AUTH_RATE_LIMIT_EXCEEDED",
   });
 
+  // Rate limiter admin (doubling ban progressif)
+  const adminRateLimiter = createAdminRateLimiter({ redis }, {
+    maxRequests: 30,
+    windowSeconds: 60,
+    baseBanHours: 1,
+    maxBanHours: 48,
+  });
+
+  // Admin rate limit middleware (doubling ban)
+  const adminRateLimitMiddleware = async (req: Request, ctx: any, next: () => Promise<Response>) => {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || req.headers.get("x-real-ip")
+      || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || "unknown";
+    const url = new URL(req.url);
+    const endpoint = url.pathname;
+    const result = await ctx.app.adminRateLimiter.check(ip, endpoint);
+    if (!result.allowed && result.ban) {
+      return new Response(
+        JSON.stringify({ success: false, error: { code: "ADMIN_RATE_LIMIT_EXCEEDED", message: "Trop de violations. Votre IP est bannie." } }),
+        { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(result.ban.retryAfterSeconds) } }
+      );
+    }
+    return next();
+  };
+
+  // Security events logger
+  const securityEvents = createSecurityEvents({ db }, { defaultLimit: 50 });
+
   // Rate limiter public (formulaires contact/devis)
   const publicRateLimiter = createRateLimiter({ redis }, {
     maxRequests: config.publicRateLimitMax,
@@ -181,7 +213,9 @@ async function bootstrap() {
   const ctx: AppContext = {
     config, log, db, redis, health, auth, rbac, csrf, cors, securityHeaders, trustedProxy,
     rateLimiter, authRateLimiter, authRateLimitMiddleware, outbox, publicRateLimitMiddleware,
+    adminRateLimiter, securityEvents, adminRateLimitMiddleware,
     storage, upload,
+    pagination: createPagination({ secret: config.paginationSecret, pageSize: 20 }),
   };
 
   const router = createRouter();

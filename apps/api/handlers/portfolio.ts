@@ -112,16 +112,17 @@ export const handleCategoryCreate: RouteHandler = async (req, ctx) => {
     const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = categoryCreateSchema.parse(body);
 
+    const categoryId = randomUUID();
     await app.db.sql.unsafe(
       `INSERT INTO categories (id, name, slug, description, sort_order, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [randomUUID(), parsed.name, parsed.slug, parsed.description ?? null, parsed.sortOrder],
+      [categoryId, parsed.name, parsed.slug, parsed.description ?? null, parsed.sortOrder],
     );
 
     await app.db.sql.unsafe(
       `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_data, created_at)
        VALUES ($1, $2, 'create', 'category', $3, $4, NOW())`,
-      [randomUUID(), user.id, parsed.slug, JSON.stringify({ name: parsed.name })],
+      [randomUUID(), user.id, categoryId, JSON.stringify({ name: parsed.name })],
     );
 
     app.log.info("Category created", { userId: user.id, slug: parsed.slug });
@@ -356,9 +357,8 @@ export const handleProjectCreate: RouteHandler = async (req, ctx) => {
     const parsed = projectCreateSchema.parse(body);
     const projectId = randomUUID();
 
-    await app.db.sql.unsafe(`BEGIN`);
-    try {
-      await app.db.sql.unsafe(
+    await app.db.sql.begin(async (tx) => {
+      await tx.unsafe(
         `INSERT INTO projects (id, title, slug, description, location, year, status, version, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 1, NOW(), NOW())`,
         [projectId, parsed.title, parsed.slug, parsed.description ?? null, parsed.location ?? null, parsed.year ?? null, parsed.status],
@@ -366,18 +366,13 @@ export const handleProjectCreate: RouteHandler = async (req, ctx) => {
 
       if (parsed.categoryIds && parsed.categoryIds.length > 0) {
         for (const catId of parsed.categoryIds) {
-          await app.db.sql.unsafe(
+          await tx.unsafe(
             `INSERT INTO project_categories (project_id, category_id) VALUES ($1, $2)`,
             [projectId, catId],
           );
         }
       }
-
-      await app.db.sql.unsafe(`COMMIT`);
-    } catch (txErr) {
-      await app.db.sql.unsafe(`ROLLBACK`);
-      throw txErr;
-    }
+    });
 
     await app.db.sql.unsafe(
       `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, new_data, created_at)
@@ -434,9 +429,8 @@ export const handleProjectUpdate: RouteHandler = async (req, ctx) => {
       version: existing[0]!.version,
     };
 
-    await app.db.sql.unsafe(`BEGIN`);
-    try {
-      await app.db.sql.unsafe(
+    await app.db.sql.begin(async (tx) => {
+      await tx.unsafe(
         `UPDATE projects
          SET title = COALESCE($1, title),
              slug = COALESCE($2, slug),
@@ -452,25 +446,20 @@ export const handleProjectUpdate: RouteHandler = async (req, ctx) => {
       );
 
       if (parsed.categoryIds !== undefined) {
-        await app.db.sql.unsafe(
+        await tx.unsafe(
           `DELETE FROM project_categories WHERE project_id = $1`,
           [projectId],
         );
         if (parsed.categoryIds.length > 0) {
           for (const catId of parsed.categoryIds) {
-            await app.db.sql.unsafe(
+            await tx.unsafe(
               `INSERT INTO project_categories (project_id, category_id) VALUES ($1, $2)`,
               [projectId, catId],
             );
           }
         }
       }
-
-      await app.db.sql.unsafe(`COMMIT`);
-    } catch (txErr) {
-      await app.db.sql.unsafe(`ROLLBACK`);
-      throw txErr;
-    }
+    });
 
     await app.db.sql.unsafe(
       `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, old_data, new_data, created_at)
@@ -634,18 +623,13 @@ export const handleProjectAddImage: RouteHandler = async (req, ctx) => {
       return jsonErrorResponse({ message: "Média non trouvé", code: "NOT_FOUND" }, 404);
     }
 
-    await app.db.sql.unsafe(`BEGIN`);
-    try {
-      await app.db.sql.unsafe(
+    await app.db.sql.begin(async (tx) => {
+      await tx.unsafe(
         `INSERT INTO project_images (id, project_id, media_id, sort_order, is_cover, created_at)
          VALUES ($1, $2, $3, $4, $5, NOW())`,
         [randomUUID(), projectId, mediaId, sortOrder, isCover],
       );
-      await app.db.sql.unsafe(`COMMIT`);
-    } catch (txErr) {
-      await app.db.sql.unsafe(`ROLLBACK`);
-      throw txErr;
-    }
+    });
 
     app.log.info("Project image added", { userId: user.id, projectId, mediaId });
     return jsonOk({ message: "Image ajoutée" }, 201);

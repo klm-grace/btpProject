@@ -81,18 +81,31 @@ export const handleSeoMetaGet: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "entityType et entityId requis", code: "MISSING_PARAMS" }, 400);
   }
 
-  const meta = await app.db.sql.unsafe(
-    `SELECT id, entity_type, entity_id, title, description, og_image, created_at, updated_at
-     FROM seo_metas
-     WHERE entity_type = $1 AND entity_id = $2`,
-    [entityType, entityId],
-  );
-
-  if (!meta || meta.length === 0) {
-    return jsonErrorResponse({ message: "Méta SEO non trouvée", code: "NOT_FOUND" }, 404);
+  // Validate UUID format for entityId
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) {
+    return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 
-  return jsonOk({ data: meta[0] });
+  try {
+    const meta = await app.db.sql.unsafe(
+      `SELECT id, entity_type, entity_id, title, description, og_image, created_at, updated_at
+       FROM seo_metas
+       WHERE entity_type = $1 AND entity_id = $2`,
+      [entityType, entityId],
+    );
+
+    if (!meta || meta.length === 0) {
+      return jsonErrorResponse({ message: "Méta SEO non trouvée", code: "NOT_FOUND" }, 404);
+    }
+
+    return jsonOk({ data: meta[0] });
+  } catch (e: unknown) {
+    if ((e as Error).message?.includes("invalid input syntax for type uuid")) {
+      return jsonErrorResponse({ message: "Format d'identifiant invalide", code: "INVALID_UUID" }, 400);
+    }
+    app.log.error("SEO meta get error", { error: (e as Error).message });
+    return jsonErrorResponse({ message: "Erreur serveur", code: "INTERNAL_ERROR" }, 500);
+  }
 };
 
 // ── POST /api/admin/seo-metas ─────────────────────────────────────────────────
@@ -111,6 +124,7 @@ export const handleSeoMetaCreate: RouteHandler = async (req, ctx) => {
 
   try {
     const body = ctx.state.body as Record<string, unknown> ?? {};
+    app.log.debug("SEO create body", { body: JSON.stringify(body) });
     const parsed = seoMetaCreateSchema.parse(body);
     const id = randomUUID();
 
@@ -132,6 +146,7 @@ export const handleSeoMetaCreate: RouteHandler = async (req, ctx) => {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
+    app.log.error("SEO create error", { error: (e as Error).message });
     return jsonErrorResponse({ message: "Erreur lors de l'enregistrement", code: "INTERNAL_ERROR" }, 500);
   }
 };
@@ -196,6 +211,7 @@ export const handleSeoMetaUpdate: RouteHandler = async (req, ctx) => {
     if (e instanceof z.ZodError) {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
+    app.log.error("SEO error", { error: (e as Error).message });
     return jsonErrorResponse({ message: "Erreur lors de la mise à jour", code: "INTERNAL_ERROR" }, 500);
   }
 };
@@ -220,18 +236,24 @@ export const handleSeoMetaDelete: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "entityType et entityId requis", code: "MISSING_PARAMS" }, 400);
   }
 
-  const existing = await app.db.sql.unsafe(
-    `SELECT * FROM seo_metas WHERE entity_type = $1 AND entity_id = $2`,
-    [entityType, entityId],
-  );
-  if (!existing || existing.length === 0) {
-    return jsonErrorResponse({ message: "Méta SEO non trouvée", code: "NOT_FOUND" }, 404);
+  // Validate UUID format
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) {
+    return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 
-  await app.db.sql.unsafe(
-    `DELETE FROM seo_metas WHERE entity_type = $1 AND entity_id = $2`,
-    [entityType, entityId],
-  );
+  try {
+    const existing = await app.db.sql.unsafe(
+      `SELECT * FROM seo_metas WHERE entity_type = $1 AND entity_id = $2`,
+      [entityType, entityId],
+    );
+    if (!existing || existing.length === 0) {
+      return jsonErrorResponse({ message: "Méta SEO non trouvée", code: "NOT_FOUND" }, 404);
+    }
+
+    await app.db.sql.unsafe(
+      `DELETE FROM seo_metas WHERE entity_type = $1 AND entity_id = $2`,
+      [entityType, entityId],
+    );
 
   await app.db.sql.unsafe(
     `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, old_data, created_at)
@@ -239,6 +261,10 @@ export const handleSeoMetaDelete: RouteHandler = async (req, ctx) => {
     [randomUUID(), user.id, existing![0]!.id, JSON.stringify({ entityType, entityId })],
   );
 
-  app.log.info("SEO meta deleted", { userId: user.id, entityType, entityId });
-  return jsonOk({ message: "Méta SEO supprimée" });
+    app.log.info("SEO meta deleted", { userId: user.id, entityType, entityId });
+    return jsonOk({ message: "Méta SEO supprimée" });
+  } catch (e: unknown) {
+    app.log.error("SEO meta delete error", { error: (e as Error).message });
+    return jsonErrorResponse({ message: "Erreur serveur", code: "INTERNAL_ERROR" }, 500);
+  }
 };

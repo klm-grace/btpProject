@@ -28,6 +28,9 @@ import { createOutbox, type OutboxDeps, type OutboxConfig } from "@libs/outbox";
 import { createBodyMiddleware } from "@libs/body";
 import { createStorage } from "@libs/storage";
 import { createUpload } from "@libs/upload";
+import { createPagination } from "@libs/pagination";
+import { createSecurityEvents } from "@libs/security-events";
+import { createAdminRateLimiter } from "@libs/admin-rate-limit";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
 import type { RbacDeps, RbacConfig } from "@libs/rbac/types";
 import type { CsrfConfig } from "@libs/csrf/types";
@@ -186,6 +189,17 @@ export async function getTestServer(): Promise<ApiServer> {
     config, log, db, redis, health, auth, rbac, csrf, cors, securityHeaders, trustedProxy,
     rateLimiter, authRateLimiter, authRateLimitMiddleware, outbox, publicRateLimitMiddleware,
     storage, upload,
+    pagination: createPagination({ secret: "test-pagination-secret-32chars-min!", pageSize: 20 }),
+    securityEvents: {
+      recordEvent: async () => {},
+      getEvents: async () => [],
+      purgeOldEvents: async () => 0,
+    },
+    adminRateLimiter: {
+      check: async () => ({ allowed: true }),
+      clearBan: async () => {},
+    },
+    adminRateLimitMiddleware: async (_req: any, _ctx: any, next: any) => next(),
   };
 
   // Body middleware — limites selon Content-Type

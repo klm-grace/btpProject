@@ -116,6 +116,8 @@ declare global {
     publicRateLimitWindow: number;
     /** Version actuelle du consentement RGPD. */
     consentVersion: string;
+    /** Secret pour signer les cursors de pagination. Minimum 32 caractères. */
+    paginationSecret: string;
     // ── Storage / Upload (section 09) ────────────────────────────────────────
     storage: {
       backend: "disk" | "r2";
@@ -164,6 +166,7 @@ declare global {
 
   interface Db {
     readonly sql: SqlClientLike;
+    readonly unsafe: <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<T[]>;
     readonly ping: () => Promise<boolean>;
     readonly queryOne: <T = Record<string, unknown>>(
       strings: TemplateStringsArray,

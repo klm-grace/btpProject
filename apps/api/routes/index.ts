@@ -67,6 +67,15 @@ import {
   handleSettingsDelete,
   handleSettingsBatchUpdate,
 } from "../handlers/settings";
+import { handleSecurityEventList, handleFlagUser } from "../handlers/securityEvents";
+import {
+  handleContactList,
+  handleContactGet,
+  handleContactUpdate,
+  handleQuoteList,
+  handleQuoteGet,
+  handleQuoteUpdate,
+} from "../handlers/leads";
 import { sessionMiddleware } from "../middleware/session";
 import { requireMonitoringAccess } from "../middleware/monitoring";
 import { wrapHandler, wrapMiddleware } from "../utils/wrap";
@@ -74,6 +83,9 @@ import { wrapHandler, wrapMiddleware } from "../utils/wrap";
 export function registerRoutes(router: Router, ctx: AppContext) {
   // ── CSRF middleware global (toutes les mutations protégées) ───────────
   router.use(ctx.csrf.middleware);
+
+  // ── Admin rate limit middleware (doubling ban par IP) ──────────────────
+  router.use(ctx.adminRateLimitMiddleware);
 
   // --- Health ---
   router.get("/api/health", wrapMiddleware(requireMonitoringAccess), wrapHandler(handleHealth));
@@ -167,4 +179,16 @@ export function registerRoutes(router: Router, ctx: AppContext) {
   router.put("/api/admin/settings/:key", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsUpdate));
   router.delete("/api/admin/settings/:key", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsDelete));
   router.post("/api/admin/settings/batch", wrapMiddleware(sessionMiddleware), wrapHandler(handleSettingsBatchUpdate));
+
+  // --- Leads (contacts & devis) ---
+  router.get("/api/admin/contacts", wrapMiddleware(sessionMiddleware), wrapHandler(handleContactList));
+  router.get("/api/admin/contacts/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleContactGet));
+  router.put("/api/admin/contacts/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleContactUpdate));
+  router.get("/api/admin/quotes", wrapMiddleware(sessionMiddleware), wrapHandler(handleQuoteList));
+  router.get("/api/admin/quotes/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleQuoteGet));
+  router.put("/api/admin/quotes/:id", wrapMiddleware(sessionMiddleware), wrapHandler(handleQuoteUpdate));
+
+  // --- Security Events ---
+  router.get("/api/admin/security-events", wrapMiddleware(sessionMiddleware), wrapHandler(handleSecurityEventList));
+  router.put("/api/admin/users/:id/flag", wrapMiddleware(sessionMiddleware), wrapHandler(handleFlagUser));
 }

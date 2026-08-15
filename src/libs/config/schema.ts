@@ -42,6 +42,7 @@ const envSchema = z.object({
   publicRateLimitMax: z.coerce.number().int().min(1).max(100).default(5),
   publicRateLimitWindow: z.coerce.number().int().min(10).max(3600).default(300),
   consentVersion: z.string().default("1.0"),
+  paginationSecret: z.string().min(32, "PAGINATION_SECRET doit faire au moins 32 caractères").default(""),
   // ── Storage / Upload (section 09) ─────────────────────────────────────
   storageBackend: z.enum(["disk", "r2"]).default("disk"),
   storageDiskPath: z.string().default("./data/uploads"),
@@ -83,6 +84,7 @@ type ParsedConfig = {
   publicRateLimitMax: number;
   publicRateLimitWindow: number;
   consentVersion: string;
+  paginationSecret: string;
   // ── Storage / Upload (section 09) ─────────────────────────────────────
   storageBackend: "disk" | "r2";
   storageDiskPath: string;
@@ -118,6 +120,7 @@ function toConfig(parsed: ParsedConfig): AppConfig {
     publicRateLimitMax: parsed.publicRateLimitMax,
     publicRateLimitWindow: parsed.publicRateLimitWindow,
     consentVersion: parsed.consentVersion,
+    paginationSecret: parsed.paginationSecret,
     storage: {
       backend: parsed.storageBackend,
       diskPath: parsed.storageDiskPath,
@@ -161,6 +164,7 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         publicRateLimitMax: raw.PUBLIC_RATE_LIMIT_MAX,
         publicRateLimitWindow: raw.PUBLIC_RATE_LIMIT_WINDOW,
         consentVersion: raw.CONSENT_VERSION,
+        paginationSecret: raw.PAGINATION_SECRET,
         // ── Storage / Upload (section 09) ───────────────────────────────
         storageBackend: raw.STORAGE_BACKEND,
         storageDiskPath: raw.STORAGE_DISK_PATH,

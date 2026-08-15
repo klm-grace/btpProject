@@ -24,6 +24,7 @@ export function createDb(config: DbConfig): Db {
 
   return {
     sql,
+    unsafe: sql.unsafe.bind(sql),
     ping,
     queryOne,
     close: () => sql.close(),

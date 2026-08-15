@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import { getTestServer, releaseTestServer } from "../support/server";
+import { cleanupTestDB } from "../support/cleanup";
 
 let baseUrl = "";
 let cookies: Record<string, string> = {};
@@ -26,6 +27,7 @@ function cookieHeader(): string {
 }
 
 beforeAll(async () => {
+  await cleanupTestDB();
   const server = await getTestServer();
   baseUrl = server.baseUrl;
 

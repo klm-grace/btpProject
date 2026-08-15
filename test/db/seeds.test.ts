@@ -41,7 +41,7 @@ describe("seeds", () => {
       return;
     }
     const perms = await db.sql<{ name: string }>`SELECT name FROM permissions ORDER BY name`;
-    expect(perms.length).toBe(9);
+    expect(perms.length).toBe(11);
     expect(perms.map((p) => p.name)).toContain("users.read");
     expect(perms.map((p) => p.name)).toContain("content.write");
   });

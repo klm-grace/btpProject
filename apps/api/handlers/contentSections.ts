@@ -82,18 +82,23 @@ export const handleContentSectionGet: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Slug requis", code: "MISSING_SLUG" }, 400);
   }
 
-  const section = await app.db.sql.unsafe(
-    `SELECT id, slug, title, body, status, version, created_at, updated_at
-     FROM content_sections
-     WHERE slug = $1 AND deleted_at IS NULL`,
-    [slug],
-  );
+  try {
+    const section = await app.db.sql.unsafe(
+      `SELECT id, slug, title, body, status, version, created_at, updated_at
+       FROM content_sections
+       WHERE slug = $1 AND deleted_at IS NULL`,
+      [slug],
+    );
 
-  if (!section || section.length === 0) {
-    return jsonErrorResponse({ message: "Section non trouvée", code: "NOT_FOUND" }, 404);
+    if (!section || section.length === 0) {
+      return jsonErrorResponse({ message: "Section non trouvée", code: "NOT_FOUND" }, 404);
+    }
+
+    return jsonOk({ data: section[0] });
+  } catch (e: unknown) {
+    app.log.error("Content section get error", { error: (e as Error).message });
+    return jsonErrorResponse({ message: "Erreur serveur", code: "INTERNAL_ERROR" }, 500);
   }
-
-  return jsonOk({ data: section[0] });
 };
 
 // ── POST /api/admin/content-sections ──────────────────────────────────────────
@@ -223,23 +228,28 @@ export const handleContentSectionDelete: RouteHandler = async (req, ctx) => {
     return jsonErrorResponse({ message: "Slug requis", code: "MISSING_SLUG" }, 400);
   }
 
-  const existing = await app.db.sql.unsafe(
-    `SELECT * FROM content_sections WHERE slug = $1 AND deleted_at IS NULL`,
-    [slug],
-  );
-  if (!existing || existing.length === 0) {
-    return jsonErrorResponse({ message: "Section non trouvée", code: "NOT_FOUND" }, 404);
+  try {
+    const existing = await app.db.sql.unsafe(
+      `SELECT * FROM content_sections WHERE slug = $1 AND deleted_at IS NULL`,
+      [slug],
+    );
+    if (!existing || existing.length === 0) {
+      return jsonErrorResponse({ message: "Section non trouvée", code: "NOT_FOUND" }, 404);
+    }
+
+    const existingRow = existing[0];
+    await app.db.sql.unsafe(`UPDATE content_sections SET deleted_at = NOW() WHERE slug = $1`, [slug]);
+
+    await app.db.sql.unsafe(
+      `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, old_data, created_at)
+       VALUES ($1, $2, 'delete', 'content_section', $3, $4, NOW())`,
+      [randomUUID(), user.id, existingRow!.id, JSON.stringify({ slug: existingRow!.slug, title: existingRow!.title })],
+    );
+
+    app.log.info("Content section deleted", { userId: user.id, slug });
+    return jsonOk({ message: "Section supprimée" });
+  } catch (e: unknown) {
+    app.log.error("Content section delete error", { error: (e as Error).message });
+    return jsonErrorResponse({ message: "Erreur serveur", code: "INTERNAL_ERROR" }, 500);
   }
-
-  const existingRow = existing[0];
-  await app.db.sql.unsafe(`UPDATE content_sections SET deleted_at = NOW() WHERE slug = $1`, [slug]);
-
-  await app.db.sql.unsafe(
-    `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, old_data, created_at)
-     VALUES ($1, $2, 'delete', 'content_section', $3, $4, NOW())`,
-    [randomUUID(), user.id, existingRow!.id, JSON.stringify({ slug: existingRow!.slug, title: existingRow!.title })],
-  );
-
-  app.log.info("Content section deleted", { userId: user.id, slug });
-  return jsonOk({ message: "Section supprimée" });
 };

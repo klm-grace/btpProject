@@ -91,7 +91,7 @@ export const handleUpdateCompanyProfile: RouteHandler = async (req, ctx) => {
       updates.push(`updated_at = NOW()`);
       values.push(existingId);
 
-      await app.db.sql.unsafe(`UPDATE company_profile SET ${updates.join(", ")} WHERE id = $${idx}`);
+      await app.db.sql.unsafe(`UPDATE company_profile SET ${updates.join(", ")} WHERE id = $${values.length}`, values);
       newId = existingId;
     } else {
       newId = randomUUID();
@@ -126,6 +126,7 @@ export const handleUpdateCompanyProfile: RouteHandler = async (req, ctx) => {
       return jsonErrorResponse({ message: "Données invalides", code: "VALIDATION_ERROR" }, 400);
     }
     app.log.error("Company profile update error", { error: (e as Error).message, stack: (e as Error).stack });
+    app.log.error("Company profile error", { error: (e as Error).message });
     return jsonErrorResponse({ message: "Erreur lors de la mise à jour", code: "INTERNAL_ERROR" }, 500);
   }
 };

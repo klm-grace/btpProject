@@ -71,6 +71,15 @@ export const handleLogin: RouteHandler = async (req, ctx) => {
           pendingToken: (result as { pendingToken?: string }).pendingToken,
         });
       }
+      // Log security event for failed login
+      if (result.error === "invalid_credentials" || result.error === "brute_force_lockout") {
+        await app.securityEvents.recordEvent({
+          eventType: result.error === "brute_force_lockout" ? "brute_force_lockout" : "login_failed",
+          ip: app.trustedProxy.getClientIp(req),
+          userAgent: req.headers.get("user-agent"),
+          details: { reason: result.error },
+        });
+      }
       return jsonErrorResponse({ message: result.error, code: "AUTH_FAILED" }, 401);
     }
 

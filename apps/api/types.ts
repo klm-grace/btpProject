@@ -1,8 +1,5 @@
 /**
  * Types applicatifs pour apps/api.
- *
- * Les types Db, Logger, HealthChecker, AppConfig sont déclarés globalement
- * dans src/types/global.d.ts (declare global) — pas besoin de les importer.
  */
 
 export type { RouteHandler, Middleware } from "@libs/router/types";
@@ -16,8 +13,8 @@ import type { Redis } from "@libs/redis";
 import type { Outbox } from "@libs/outbox";
 import type { StorageProvider } from "@libs/storage";
 import type { UploadEngine } from "@libs/upload";
+import type { PaginationEngine } from "@libs/pagination";
 
-/** Utilisateur authentifié, injecté par le middleware session. */
 export interface AuthUser {
   id: string;
   email: string;
@@ -27,10 +24,6 @@ export interface AuthUser {
   mfaEnabled: boolean;
 }
 
-/**
- * Contexte applicatif injecté dans les handlers et middlewares.
- * Typé précisément — aucun `any`.
- */
 export interface AppContext {
   config: AppConfig;
   log: Logger;
@@ -48,21 +41,44 @@ export interface AppContext {
   authRateLimitMiddleware: RateLimitMiddleware;
   outbox: Outbox;
   publicRateLimitMiddleware: RateLimitMiddleware;
-  /** Fournisseur de stockage (disk ou R2, injecté par l'app). */
   storage: StorageProvider & {
     activeBackend: () => "disk" | "r2";
     getDiskSize: () => Promise<number>;
     shouldMigrate: () => Promise<boolean>;
   };
-  /** Moteur d'upload (validation + stockage + variantes). */
   upload: UploadEngine;
+  pagination: PaginationEngine;
+  securityEvents: {
+    recordEvent(params: {
+      userId?: string | null;
+      eventType: string;
+      ip?: string | null;
+      userAgent?: string | null;
+      details?: Record<string, unknown>;
+    }): Promise<void>;
+    getEvents(query?: {
+      userIds?: string[];
+      eventType?: string | string[];
+      limit?: number;
+      offset?: number;
+    }): Promise<any[]>;
+    purgeOldEvents(): Promise<number>;
+  };
+  adminRateLimiter: {
+    check(ip: string, endpoint: string): Promise<{
+      allowed: boolean;
+      resetSeconds?: number;
+      ban?: { banned: boolean; retryAfterSeconds: number; violations: number };
+    }>;
+    clearBan(ip: string): Promise<void>;
+  };
+  adminRateLimitMiddleware: (
+    req: Request,
+    ctx: any,
+    next: () => Promise<Response>,
+  ) => Promise<Response>;
 }
 
-/**
- * RouteContext étendu : le contexte de l'app est stocké dans ctx.state.app
- * (conformément au design du routeur @libs/router qui place le contexte
- * passé via `handle(req, context)` dans `ctx.state`).
- */
 export interface RouteContext extends BaseRouteContext {
   state: BaseRouteContext["state"] & {
     app: AppContext;

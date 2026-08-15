@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import { getTestServer, releaseTestServer } from "../support/server";
+import { cleanupTestDB } from "../support/cleanup";
 
 let baseUrl = "";
 let cookies: Record<string, string> = {};
@@ -27,6 +28,7 @@ function cookieHeader(): string {
 }
 
 beforeAll(async () => {
+  await cleanupTestDB();
   const server = await getTestServer();
   baseUrl = server.baseUrl;
   const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
@@ -388,7 +390,10 @@ describe("section 11 — Contenus éditoriaux", () => {
 
       const res = await fetch(`${baseUrl}/api/admin/content-sections/${slug}`, {
         method: "DELETE",
-        headers: { "Cookie": cookieHeader() },
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": csrfHeader(),
+        },
       });
       expect(res.status).toBe(200);
     });
@@ -403,6 +408,7 @@ describe("section 11 — Contenus éditoriaux", () => {
     });
 
     it("POST /api/admin/seo-metas crée une meta SEO", async () => {
+      const entityId = "550e8400-e29b-41d4-a716-44665544" + String(Math.floor(Math.random() * 10000)).padStart(4, '0');
       const res = await fetch(`${baseUrl}/api/admin/seo-metas`, {
         method: "POST",
         headers: {
@@ -412,7 +418,7 @@ describe("section 11 — Contenus éditoriaux", () => {
         },
         body: JSON.stringify({
           entityType: "service",
-          entityId: "00000000-0000-0000-0000-000000000001",
+          entityId,
           title: "Test SEO",
           description: "Description test",
         }),
@@ -437,7 +443,10 @@ describe("section 11 — Contenus éditoriaux", () => {
     it("DELETE /api/admin/seo-metas/:entityType/:entityId supprime une meta", async () => {
       const res = await fetch(`${baseUrl}/api/admin/seo-metas/content_section/00000000-0000-0000-0000-000000000001`, {
         method: "DELETE",
-        headers: { "Cookie": cookieHeader() },
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": csrfHeader(),
+        },
       });
       expect([200, 404]).toContain(res.status);
     });
@@ -504,7 +513,10 @@ describe("section 11 — Contenus éditoriaux", () => {
       });
       const res = await fetch(`${baseUrl}/api/admin/settings/${key}`, {
         method: "DELETE",
-        headers: { "Cookie": cookieHeader() },
+        headers: {
+          "Cookie": cookieHeader(),
+          "X-CSRF-Token": csrfHeader(),
+        },
       });
       expect(res.status).toBe(200);
     });
