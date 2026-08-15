@@ -167,12 +167,27 @@ async function handle(req: Request, context?: Record<string, unknown>): Promise<
       return jsonError(400, "bad_request", "Malformed request path", requestId);
     }
 
-    // OPTIONS : renvoyer Allow si la route existe (mÃªme si aucune méthode OPTIONS enregistrée).
+    const routes = sortRoutes(routesByMethod.get(method)!);
+
+    // OPTIONS : CORS preflight — retourner Allow si une route existe pour ce path
     if (method === "OPTIONS") {
+      const segments = splitPath(path, maxPathLength);
+      if (segments) {
+        const allowed: HttpMethod[] = [];
+        for (const m of SUPPORTED_METHODS) {
+          if (m === "OPTIONS") continue;
+          const anyMatch = routesByMethod.get(m)!.some((r) => matchRoute(r, segments) !== null);
+          if (anyMatch) allowed.push(m);
+        }
+        if (allowed.length > 0) {
+          return new Response(null, {
+            status: 204,
+            headers: { Allow: allowed.join(", ") },
+          });
+        }
+      }
       return buildMethodNotAllowed(path, requestId);
     }
-
-    const routes = sortRoutes(routesByMethod.get(method)!);
 
     for (const route of routes) {
       const params = matchRoute(route, segments);

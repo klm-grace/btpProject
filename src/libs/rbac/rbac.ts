@@ -100,7 +100,10 @@ export function createRbac(deps: RbacDeps, config: RbacConfig): Rbac {
   function requirePermission(permission: string): Middleware {
     return async (req, ctx, next) => {
       const user = ctx.state.user as RbacUser | undefined;
-      const check = await checkPermission(user!, permission);
+      if (!user) {
+        return jsonError(401, "unauthorized", "Not authenticated");
+      }
+      const check = await checkPermission(user, permission);
       if (!check.allowed) {
         return jsonError(check.code === "unauthorized" ? 401 : 403, check.code, check.message);
       }
