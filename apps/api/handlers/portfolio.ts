@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { logLoginAttempt, logForbiddenAccess, logIntrusionAttempt } from "../utils/logger-helpers";
 import { isValidUUID } from "../utils/validate";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
@@ -382,6 +383,7 @@ export const handleProjectCreate: RouteHandler = async (req, ctx) => {
     );
 
     app.log.info("Project created", { userId: user.id, projectId });
+    app.log.info("Project created", { userId: user.id, projectId, ip: app.trustedProxy.getClientIp(req) });
     return jsonOk({ id: projectId, message: "Projet créé" }, 201);
   } catch (e) {
     if (e instanceof z.ZodError) {
@@ -515,7 +517,8 @@ export const handleProjectDelete: RouteHandler = async (req, ctx) => {
     [randomUUID(), user.id, projectId, JSON.stringify({ title: existing[0]!.title, slug: existing[0]!.slug })],
   );
 
-  app.log.info("Project deleted", { userId: user.id, projectId });
+  app.log.security("Project deleted", { userId: user.id, projectId, ip: app.trustedProxy.getClientIp(req) });
+    app.log.info("Project deleted", { userId: user.id, projectId });
   return jsonOk({ message: "Projet supprimé" });
 };
 

@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { logLoginAttempt, logForbiddenAccess, logIntrusionAttempt } from "../utils/logger-helpers";
 import { getAppContext } from "../utils/context";
 import { randomUUID } from "node:crypto";
 

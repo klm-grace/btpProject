@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { logLoginAttempt, logForbiddenAccess, logIntrusionAttempt } from "../utils/logger-helpers";
 import { COOKIE_NAMES, COOKIE_SETTINGS } from "../constants";
 import { parseCookie } from "../utils/cookies";
 import { getAppContext } from "../utils/context";
@@ -79,9 +80,25 @@ export const handleLogin: RouteHandler = async (req, ctx) => {
           userAgent: req.headers.get("user-agent"),
           details: { reason: result.error },
         });
+        // Log to security file for intrusion detection
+        app.log.security("Auth failure", {
+          userId: user?.id,
+          email: normalizedEmail.slice(0, 3) + "***", // Partial email for tracking
+          ip: app.trustedProxy.getClientIp(req),
+          reason: result.error,
+          userAgent: req.headers.get("user-agent"),
+        });
       }
       return jsonErrorResponse({ message: result.error, code: "AUTH_FAILED" }, 401);
     }
+
+    // Log successful auth
+    app.log.info("Login success", {
+      userId: result.user.id,
+      email: result.user.email,
+      ip: app.trustedProxy.getClientIp(req),
+      userAgent: req.headers.get("user-agent"),
+    });
 
     const res = jsonOk({ user: result.user });
 

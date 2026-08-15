@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { logLoginAttempt, logForbiddenAccess, logIntrusionAttempt } from "../utils/logger-helpers";
 import { isValidUUID } from "../utils/validate";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
@@ -38,6 +39,13 @@ export const handleSecurityEventList: RouteHandler = async (req, ctx) => {
   if (userId) query.userIds = [userId];
 
   const events = await app.securityEvents.getEvents(query);
+
+  // Log security event access
+  app.log.info("Security events accessed", {
+    userId: user.id,
+    filters: { eventType, userId: url.searchParams.get("userId") },
+    ip: app.trustedProxy.getClientIp(req),
+  });
 
   return jsonOk({ data: events, meta: { limit, offset } });
 };
@@ -96,6 +104,13 @@ export const handleFlagUser: RouteHandler = async (req, ctx) => {
     });
 
     app.log.info("User flagged", { userId: user.id, targetUserId, suspicious: newSuspicious });
+    app.log.security("User flagged/unflagged", {
+      action: newSuspicious ? "flagged" : "unflagged",
+      adminUserId: user.id,
+      targetUserId,
+      note: newNote,
+      ip: app.trustedProxy.getClientIp(req),
+    });
     return jsonOk({ message: newSuspicious ? "Utilisateur flaggé" : "Utilisateur déflaggé" });
   } catch (e) {
     if (e instanceof z.ZodError) {

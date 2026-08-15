@@ -205,6 +205,7 @@ export function createLogger(config: LoggerConfig): Logger {
 
   // File logging with rotation
   const logFile = config.logDir ? join(config.logDir, "app.log") : undefined;
+  const securityLogFile = config.logDir ? join(config.logDir, "security.log") : undefined;
   if (logFile && config.rotate !== false) {
     if (!existsSync(config.logDir!)) mkdirSync(config.logDir!, { recursive: true });
   }
@@ -234,6 +235,19 @@ export function createLogger(config: LoggerConfig): Logger {
     // Méthode supplémentaire pour forcer la rotation
     rotateLogs: () => {
       if (logFile) rotateLogFile(logFile, config.maxSizeBytes ?? DEFAULT_MAX_SIZE_BYTES, config.maxFiles ?? DEFAULT_MAX_FILES);
+    },
+    // Méthode pour logger les événements de sécurité
+    security: (message: string, meta?: Record<string, unknown>) => {
+      if (!securityLogFile) return;
+      try {
+        rotateLogFile(securityLogFile, config.maxSizeBytes ?? DEFAULT_MAX_SIZE_BYTES, config.maxFiles ?? DEFAULT_MAX_FILES);
+        appendFileSync(securityLogFile, JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "WARN",
+          msg: message,
+          ctx: redact(meta ?? {}),
+        }) + "\n");
+      } catch { /* ignore */ }
     },
     // Méthode pour nettoyer les anciens logs
     cleanupOldLogs: (): number => {

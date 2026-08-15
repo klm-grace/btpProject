@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { logLoginAttempt, logForbiddenAccess, logIntrusionAttempt } from "../utils/logger-helpers";
 import { isValidUUID } from "../utils/validate";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
@@ -115,6 +116,7 @@ export const handleContactGet: RouteHandler = async (req, ctx) => {
       return jsonErrorResponse({ message: "Demande non trouvée", code: "NOT_FOUND" }, 404);
     }
 
+    app.log.info("Contact accessed", { userId: user.id, contactId, ip: app.trustedProxy.getClientIp(req) });
     return jsonOk({ data: row[0] });
   } catch (e: unknown) {
     app.log.error("Contact get error", { error: (e as Error).message });
@@ -273,6 +275,7 @@ export const handleQuoteGet: RouteHandler = async (req, ctx) => {
       return jsonErrorResponse({ message: "Demande non trouvée", code: "NOT_FOUND" }, 404);
     }
 
+    app.log.info("Quote accessed", { userId: user.id, quoteId, ip: app.trustedProxy.getClientIp(req) });
     return jsonOk({ data: row[0] });
   } catch (e: unknown) {
     app.log.error("Quote get error", { error: (e as Error).message });
