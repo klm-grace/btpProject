@@ -42,7 +42,16 @@ afterAll(async () => {
   await releaseTestServer();
 });
 
+async function getCsrfToken(): Promise<string> {
+  const res = await fetch(`${baseUrl}/api/auth/csrf`, {
+    headers: { "Cookie": cookieHeader() },
+  });
+  const data = await res.json() as { data?: { csrfToken?: string } };
+  return data.data?.csrfToken ?? "";
+}
+
 function csrfHeader(): string {
+  // Will be overridden per-test with async fetch
   return cookies["csrf_token"] ?? "";
 }
 
