@@ -281,30 +281,66 @@ export function text(body: string, status: number = 200, options: { headers?: Re
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// htmlSanitize() — Sanitization HTML légère (sans dépendance externe)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Supprime les balises et attributs dangereux d'un HTML.
+ * Utilitaire pour le caller qui veut sanitiser du contenu utilisateur.
+ *
+ * ⚠️  Ce n'est PAS un remplacement pour DOMPurify dans un contexte navigateur.
+ *     C'est un sanitizeur serveur léger qui bloque les vecteurs XSS les plus courants.
+ *
+ * @example
+ *   htmlSanitize('<script>alert(1)</script><h1>Hello</h1>')
+ *   // → '<h1>Hello</h1>'
+ *
+ *   htmlSanitize('<img src=x onerror=alert(1)>')
+ *   // → '<img src=x>'
+ */
+export function htmlSanitize(html: string): string {
+  let result = html;
+
+  // Supprimer les balises script, iframe, object, form, embed
+  result = result.replace(/<\/?(script|iframe|object|form|embed|applet|base|link|meta|style|svg)[^>]*>/gi, "");
+
+  // Supprimer les attributs on* (event handlers)
+  result = result.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, "");
+
+  // Supprimer les URLs javascript: et data:text/html
+  result = result.replace(/\s+href\s*=\s*"javascript:[^"]*"/gi, "");
+  result = result.replace(/\s+href\s*=\s*'javascript:[^']*'/gi, "");
+  result = result.replace(/\s+href\s*=\s*data:text\/html[^>]*>/gi, "");
+  result = result.replace(/\s+src\s*=\s*"javascript:[^"]*"/gi, "");
+  result = result.replace(/\s+src\s*=\s*'javascript:[^']*'/gi, "");
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // html() — Réponse HTML (text/html)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Réponse HTML (text/html).
+ * html() — Réponse HTML (text/html).
  * Le HTML est retourné TEL QUEL — le caller doit sanitiser le contenu utilisateur.
  * Security headers auto: X-Content-Type-Options: nosniff, X-XSS-Protection.
- * Pour du contenu utilisateur, utiliser htmlEscape() ou un sanitizeur (DOMPurify).
+ * Pour du contenu utilisateur, utiliser htmlEscape() ou htmlSanitize().
  *
  * @example
  *   html("<h1>Hello</h1>")                          // HTML trusted
  *   html("<h1>Hello</h1>", 201)
- *   html(htmlEscape("<h1>" + userInput + "</h1>"))  // HTML with user content
+ *   html(htmlSanitize(userInput))                   // HTML with user content (sanitized)
+ *   html("<h1>" + htmlEscape(userInput) + "</h1>") // HTML with user content (escaped)
  */
 export function html(body: string, status: number = 200, options: { headers?: Record<string, string> } = {}): Response {
-  return new Response(body, {
-    status,
-    headers: {
-      "Content-Type": "text/html;charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
-      "X-XSS-Protection": "1; mode=block",
-      ...(options.headers ?? {}),
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "text/html;charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "1; mode=block",
+    ...(options.headers ?? {}),
+  };
+  return new Response(body, { status, headers });
 }
 
 /**

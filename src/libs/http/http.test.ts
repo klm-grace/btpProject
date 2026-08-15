@@ -9,6 +9,7 @@ import {
   text,
   html,
   htmlEscape,
+  htmlSanitize,
   xml,
   notFound,
   send,
@@ -254,6 +255,50 @@ describe("sérialisation sûre", () => {
     const res = jsonOk({ [Symbol("id")]: 1, name: "Jean" });
     const body = JSON.parse(await res.text()) as { success: boolean; data: { name: string } };
     expect(body.data).toEqual({ name: "Jean" });
+  });
+});
+
+describe("htmlSanitize() — sanitization HTML", () => {
+  it("supprime les balises script", () => {
+    expect(htmlSanitize('<script>alert(1)</script><h1>Hello</h1>')).toBe("alert(1)<h1>Hello</h1>");
+  });
+
+  it("supprime les event handlers", () => {
+    expect(htmlSanitize('<img src=x onerror=alert(1)>')).toBe('<img src=x>');
+  });
+
+  it("supprime les URLs javascript:", () => {
+    expect(htmlSanitize('<a href="javascript:alert(1)">click</a>')).toBe('<a>click</a>');
+  });
+
+  it("supprime iframe et object", () => {
+    expect(htmlSanitize('<iframe src="evil"></iframe><h1>Safe</h1>')).toBe("<h1>Safe</h1>");
+    expect(htmlSanitize('<object data="evil"></object><h1>Safe</h1>')).toBe("<h1>Safe</h1>");
+  });
+
+  it("conserve le HTML légitime", () => {
+    expect(htmlSanitize('<h1 class="title">Hello <strong>World</strong></h1>')).toBe('<h1 class="title">Hello <strong>World</strong></h1>');
+  });
+
+  it("conserve les data attributes", () => {
+    expect(htmlSanitize('<div data-user-id="123">test</div>')).toBe('<div data-user-id="123">test</div>');
+  });
+
+  it("conserve les styles inline", () => {
+    expect(htmlSanitize('<div style="color: red;">test</div>')).toBe('<div style="color: red;">test</div>');
+  });
+
+  it("bloque SVG onload", () => {
+    expect(htmlSanitize('<svg onload=alert(1)><rect width="100" height="100"/></svg>')).toBe('<rect width="100" height="100"/>');
+  });
+
+  it("multi-attaques", () => {
+    const input = '<script>x</script><img src=x onerror=alert(1)><iframe src="evil"></iframe><h1>Safe</h1>';
+    const output = htmlSanitize(input);
+    expect(output).not.toContain('<script');
+    expect(output).not.toContain('onerror');
+    expect(output).not.toContain('<iframe');
+    expect(output).toContain('<h1>');
   });
 });
 
