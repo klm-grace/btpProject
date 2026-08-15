@@ -29,7 +29,7 @@ echo ""
 echo -e "${CYAN}▶ Étape 2/4 : Tests Bruno (externe)${NC}"
 if [ -d "bruno/collections" ] && command -v bun &>/dev/null; then
   echo "  Démarrage du serveur pour tests Bruno..."
-  PORT=4000 bun run apps/api/index.ts &
+  PORT=4000 bun run apps/api/index.ts > /tmp/btp-api-build.log 2>&1 &
   SERVER_PID=$!
   
   # Attendre que le serveur soit prêt
@@ -38,13 +38,17 @@ if [ -d "bruno/collections" ] && command -v bun &>/dev/null; then
       echo "  ✓ Serveur prêt (PID: $SERVER_PID)"
       break
     fi
+    if [ $i -eq 15 ]; then
+      echo "  ✗ Timeout pour démarrer le serveur"
+      kill $SERVER_PID 2>/dev/null || true
+    fi
     sleep 1
   done
   
   # Exécuter les tests Bruno
   if [ -f "scripts/run-bruno-equivalent.mjs" ]; then
     echo "  Exécution des tests Bruno..."
-    if bun run scripts/run-bruno-equivalent.mjs 2>&1; then
+    if bun run scripts/run-bruno-equivalent.mjs 2>&1 | tee /tmp/bruno-tests.log; then
       echo -e "${GREEN}  ✓ Tests Bruno passés${NC}"
     else
       echo -e "${YELLOW}  ⚠ Certains tests Bruno ont échoué (continuation)${NC}"
@@ -52,8 +56,10 @@ if [ -d "bruno/collections" ] && command -v bun &>/dev/null; then
   fi
   
   # Arrêter le serveur
+  echo "  Arrêt du serveur..."
   kill $SERVER_PID 2>/dev/null || true
   wait $SERVER_PID 2>/dev/null || true
+  rm -f /tmp/btp-api-build.log /tmp/bruno-tests.log
 else
   echo -e "${YELLOW}  ⚠ Bruno non configuré (tests manuels requis)${NC}"
 fi
@@ -83,7 +89,7 @@ echo ""
 
 # ── Étape 4 : Nettoyage ────────────────────────────────────────
 echo -e "${CYAN}▶ Étape 4/4 : Nettoyage${NC}"
-rm -rf /tmp/btp-test-storage /tmp/btp-storage-test
+rm -rf /tmp/btp-test-storage /tmp/btp-storage-test /tmp/btp-api-build.log /tmp/bruno-tests.log 2>/dev/null || true
 echo -e "  ${GREEN}✓ Nettoyage terminé${NC}"
 
 # ── Résumé ─────────────────────────────────────────────────────
