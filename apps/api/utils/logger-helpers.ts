@@ -3,7 +3,7 @@
  * Centralise les patterns de logging sécurisés.
  */
 
-import type { Logger } from "../../../src/types/global";
+import type { Logger } from "../../../src/types/global.d.ts";
 
 /**
  * Log une tentative de connexion avec sécurité.

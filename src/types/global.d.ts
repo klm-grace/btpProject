@@ -46,6 +46,8 @@ declare global {
     info(message: string, fields?: Record<string, unknown>): void;
     warn(message: string, fields?: Record<string, unknown>): void;
     error(message: string, fields?: Record<string, unknown>): void;
+    /** Log événement de sécurité (écriture dans security.log) */
+    security(message: string, fields?: Record<string, unknown>): void;
     child(fields: Record<string, unknown>): Logger;
     rotateLogs(): void;
     cleanupOldLogs(): number;
