@@ -4,7 +4,6 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
-import { readJsonBody } from "../utils/body";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
 
@@ -43,7 +42,7 @@ const QuoteSchema = z.object({
 export const handleContactSubmit: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
   try {
-    const body = await readJsonBody(req);
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = ContactSchema.safeParse(body);
     if (!parsed.success) {
       return jsonErrorResponse({ message: "Invalid request body", code: "INVALID_BODY" }, 400);
@@ -83,7 +82,7 @@ export const handleContactSubmit: RouteHandler = async (req, ctx) => {
 export const handleQuoteSubmit: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
   try {
-    const body = await readJsonBody(req);
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = QuoteSchema.safeParse(body);
     if (!parsed.success) {
       return jsonErrorResponse({ message: "Invalid request body", code: "INVALID_BODY" }, 400);

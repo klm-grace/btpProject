@@ -6,7 +6,6 @@ import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
 import { COOKIE_NAMES } from "../constants";
 import { parseCookie } from "../utils/cookies";
-import { readJsonBody } from "../utils/body";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
 
@@ -21,7 +20,7 @@ const MfaBodySchema = z.object({
 export const handleMfaVerify: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
   try {
-    const body = await readJsonBody(req);
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = MfaBodySchema.safeParse(body);
     if (!parsed.success) {
       return jsonErrorResponse({ message: "Invalid request body", code: "INVALID_BODY" }, 400);

@@ -1,18 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { createBodyMiddleware, type BodyCheckerConfig } from "./body.ts";
+import { createBodyMiddleware } from "./body.ts";
 
-function makeMiddleware(opts: Partial<BodyCheckerConfig> = {}) {
+function makeMiddleware(opts: { jsonMaxBytes?: number; multipartMaxBytes?: number } = {}) {
   return createBodyMiddleware({
     jsonMaxBytes: opts.jsonMaxBytes ?? 4096,
     multipartMaxBytes: opts.multipartMaxBytes ?? 10 * 1024 * 1024,
-  });
-}
-
-function makeRequest(body: string, contentType: string = "application/json"): Request {
-  return new Request("http://localhost/test", {
-    method: "POST",
-    headers: { "Content-Type": contentType, "Content-Length": Buffer.byteLength(body).toString() },
-    body,
   });
 }
 
@@ -23,13 +15,21 @@ function makeCtx() {
     requestId: "test-request-id",
     method: "POST" as const,
     path: "/test",
-    state: {},
+    state: {} as Record<string, unknown>,
     signal: new AbortController().signal,
   };
 }
 
+function makeJsonRequest(body: string): Request {
+  return new Request("http://localhost/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body).toString() },
+    body,
+  });
+}
+
 describe("body middleware", () => {
-  it("passe à next() si body vide", async () => {
+  it("passe à next() pour les GET (pas de body)", async () => {
     const mw = makeMiddleware();
     const req = new Request("http://localhost/test", { method: "GET" });
     const ctx = makeCtx();
@@ -40,9 +40,33 @@ describe("body middleware", () => {
     expect(res.status).toBe(200);
   });
 
+  it("parse le JSON et attache ctx.state.body", async () => {
+    const mw = makeMiddleware();
+    const req = makeJsonRequest(JSON.stringify({ email: "test@example.com", password: "secret" }));
+    const ctx = makeCtx();
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    await mw(req, ctx, next);
+    expect(called).toBe(true);
+    expect(ctx.state.body).toEqual({ email: "test@example.com", password: "secret" });
+  });
+
+  it("retourne 400 si JSON malformé", async () => {
+    const mw = makeMiddleware();
+    const req = makeJsonRequest("{ invalid json }");
+    const ctx = makeCtx();
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    const res = await mw(req, ctx, next);
+    expect(called).toBe(false);
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text()) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_JSON");
+  });
+
   it("retourne 413 si JSON dépasse jsonMaxBytes", async () => {
     const mw = makeMiddleware({ jsonMaxBytes: 100 });
-    const req = makeRequest(JSON.stringify({ data: "x".repeat(200) }));
+    const req = makeJsonRequest(JSON.stringify({ data: "x".repeat(200) }));
     const ctx = makeCtx();
     let called = false;
     const next = () => { called = true; return Promise.resolve(new Response("ok")); };
@@ -53,51 +77,70 @@ describe("body middleware", () => {
     expect(body.error.code).toBe("BODY_TOO_LARGE");
   });
 
-  it("passe si JSON dans la limite", async () => {
-    const mw = makeMiddleware({ jsonMaxBytes: 1000 });
-    const req = makeRequest(JSON.stringify({ data: "hello" }));
-    const ctx = makeCtx();
-    let called = false;
-    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
-    const res = await mw(req, ctx, next);
-    expect(called).toBe(true);
-    expect(res.status).toBe(200);
-  });
-
-  it("retourne 413 si multipart dépasse multipartMaxBytes", async () => {
-    const mw = makeMiddleware({ multipartMaxBytes: 100 });
-    const req = makeRequest("x".repeat(200), "multipart/form-data; boundary=----FormBoundary");
+  it("rejette la prototype pollution (__proto__)", async () => {
+    const mw = makeMiddleware();
+    // Utiliser JSON.parse direct pour éviter que JS ne supprime la clé __proto__
+    const req = new Request("http://localhost/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": "35" },
+      body: '{"__proto__":{"admin":true}}',
+    });
     const ctx = makeCtx();
     let called = false;
     const next = () => { called = true; return Promise.resolve(new Response("ok")); };
     const res = await mw(req, ctx, next);
     expect(called).toBe(false);
-    expect(res.status).toBe(413);
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text()) as { error: { code: string } };
+    expect(body.error.code).toBe("PROTOTYPE_POLLUTION");
   });
 
-  it("passe si multipart dans la limite", async () => {
-    const mw = makeMiddleware({ multipartMaxBytes: 1024 });
-    const req = makeRequest("hello", "multipart/form-data; boundary=----FormBoundary");
-    const ctx = makeCtx();
-    let called = false;
-    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
-    const res = await mw(req, ctx, next);
-    expect(called).toBe(true);
-    expect(res.status).toBe(200);
-  });
-
-  it("applique la limite multipart par défaut pour text/plain", async () => {
-    const mw = makeMiddleware({ multipartMaxBytes: 100 });
-    const req = makeRequest("x".repeat(200), "text/plain");
+  it("rejette la prototype pollution (constructor)", async () => {
+    const mw = makeMiddleware();
+    const req = new Request("http://localhost/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": "36" },
+      body: '{"constructor":{"args":"evil"}}',
+    });
     const ctx = makeCtx();
     let called = false;
     const next = () => { called = true; return Promise.resolve(new Response("ok")); };
     const res = await mw(req, ctx, next);
     expect(called).toBe(false);
-    expect(res.status).toBe(413);
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text()) as { error: { code: string } };
+    expect(body.error.code).toBe("PROTOTYPE_POLLUTION");
   });
 
-  it("retourne 400 si Content-Length invalide (non numerique)", async () => {
+  it("rejette la prototype pollution (prototype)", async () => {
+    const mw = makeMiddleware();
+    const req = new Request("http://localhost/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": "32" },
+      body: '{"prototype":"evil"}',
+    });
+    const ctx = makeCtx();
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    const res = await mw(req, ctx, next);
+    expect(called).toBe(false);
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text()) as { error: { code: string } };
+    expect(body.error.code).toBe("PROTOTYPE_POLLUTION");
+  });
+
+  it("accepte un JSON normal sans clé interdite", async () => {
+    const mw = makeMiddleware();
+    const req = makeJsonRequest(JSON.stringify({ name: "Jean", email: "jean@example.com" }));
+    const ctx = makeCtx();
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    await mw(req, ctx, next);
+    expect(called).toBe(true);
+    expect(ctx.state.body).toEqual({ name: "Jean", email: "jean@example.com" });
+  });
+
+  it("retourne 400 si Content-Length invalide", async () => {
     const mw = makeMiddleware();
     const req = new Request("http://localhost/test", {
       method: "POST",
@@ -112,18 +155,48 @@ describe("body middleware", () => {
     expect(res.status).toBe(400);
   });
 
-  it("passe si Content-Length absent (streaming)", async () => {
+  it("retourne {} si body JSON vide", async () => {
     const mw = makeMiddleware();
     const req = new Request("http://localhost/test", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Content-Length": "0" },
+      body: "",
+    });
+    const ctx = makeCtx();
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    await mw(req, ctx, next);
+    expect(called).toBe(true);
+    expect(ctx.state.body).toEqual({});
+  });
+
+  it("ne parse pas le multipart (laisse au handler)", async () => {
+    const mw = makeMiddleware();
+    const req = new Request("http://localhost/test", {
+      method: "POST",
+      headers: { "Content-Type": "multipart/form-data; boundary=----FormBoundary", "Content-Length": "100" },
       body: "test",
     });
     const ctx = makeCtx();
     let called = false;
     const next = () => { called = true; return Promise.resolve(new Response("ok")); };
-    const res = await mw(req, ctx, next);
+    await mw(req, ctx, next);
     expect(called).toBe(true);
-    expect(res.status).toBe(200);
+    expect(ctx.state.body).toBeUndefined();
+  });
+
+  it("rejette multipart trop gros", async () => {
+    const mw = makeMiddleware({ multipartMaxBytes: 100 });
+    const req = new Request("http://localhost/test", {
+      method: "POST",
+      headers: { "Content-Type": "multipart/form-data; boundary=----FormBoundary", "Content-Length": "200" },
+      body: "x".repeat(200),
+    });
+    const ctx = makeCtx();
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    const res = await mw(req, ctx, next);
+    expect(called).toBe(false);
+    expect(res.status).toBe(413);
   });
 });

@@ -6,7 +6,6 @@ import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
 import { COOKIE_NAMES, COOKIE_SETTINGS } from "../constants";
 import { parseCookie } from "../utils/cookies";
-import { readJsonBody } from "../utils/body";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
 
@@ -44,7 +43,7 @@ function validatePasswordPolicy(password: string): { valid: boolean; errors: str
 export const handleLogin: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
   try {
-    const body = await readJsonBody(req);
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = LoginBodySchema.safeParse(body);
     if (!parsed.success) {
       return jsonErrorResponse({ message: "Invalid request body", code: "INVALID_BODY" }, 400);
@@ -152,7 +151,7 @@ export const handleGetMe: RouteHandler = async (req, ctx) => {
 export const handleChangePassword: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
   try {
-    const body = await readJsonBody(req);
+    const body = ctx.state.body as Record<string, unknown> ?? {};
     const parsed = ChangePasswordBodySchema.safeParse(body);
     if (!parsed.success) {
       return jsonErrorResponse({ message: "Invalid request body", code: "INVALID_BODY" }, 400);
