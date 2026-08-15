@@ -2,7 +2,7 @@
 # Dockerfile — Multi-stage build pour BTP API
 # ═══════════════════════════════════════════════════════════════
 
-# ── Stage 1: Build ─────────────────────────────────────────────
+# ── Stage 1: Build + Tests ─────────────────────────────────────
 FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
@@ -10,14 +10,25 @@ WORKDIR /app
 # Copier les fichiers de dépendances
 COPY bun.lock ./
 COPY package.json ./
-COPY apps/api/package.json ./apps/api/
-COPY src/libs/*/package.json ./src/libs/ 2>/dev/null || true
 
 # Installer les dépendances
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile
 
 # Copier le code source
-COPY . .
+COPY src/ ./src/
+COPY apps/ ./apps/
+COPY test/ ./test/
+COPY migrations/ ./migrations/
+COPY seeds/ ./seeds/
+COPY tsconfig.json ./
+
+# Nettoyer les fichiers temporaires de test
+RUN rm -rf /tmp/btp-test-storage /tmp/btp-storage-test
+
+# Lancer les tests DANS Docker
+RUN bun test src/libs/ 2>&1 && \
+    bun test test/api/pentest-full.test.ts 2>&1 && \
+    bun test test/api/security-events.test.ts test/api/leads.test.ts test/api/content.test.ts test/api/portfolio.test.ts 2>&1
 
 # Build du binaire
 RUN bun build apps/api/index.ts \
@@ -39,7 +50,7 @@ ENV TRUST_PROXY=true
 RUN addgroup -g 1001 -S btp && \
     adduser -u 1001 -S btp -G btp
 
-# Copier le binaire
+# Copier uniquement le binaire et les dépendances
 COPY --from=builder --chown=btp:btp /app/dist /app/dist
 COPY --from=builder --chown=btp:btp /app/node_modules /app/node_modules
 COPY --from=builder --chown=btp:btp /app/src/libs /app/src/libs

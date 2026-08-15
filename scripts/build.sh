@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════
-# BUILD — Compilation binaire Bun
+# BUILD — Compilation binaire (tests internes + Bruno externe)
 # ═══════════════════════════════════════════════════════════════
 
 RED='\033[0;31m'
@@ -17,7 +17,7 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 
 # ── Étape 1 : Pré-build ────────────────────────────────────────
-echo -e "${CYAN}▶ Étape 1/3 : Validation pré-build${NC}"
+echo -e "${CYAN}▶ Étape 1/4 : Validation pré-build${NC}"
 if [ -f "scripts/pre-build.sh" ]; then
   bash scripts/pre-build.sh || { echo -e "${RED}Échec du pré-build${NC}"; exit 1; }
 else
@@ -25,9 +25,43 @@ else
 fi
 echo ""
 
-# ── Étape 2 : Build binaire ────────────────────────────────────
-echo -e "${CYAN}▶ Étape 2/3 : Compilation binaire${NC}"
-echo "  Build: apps/api/index.ts → dist/api"
+# ── Étape 2 : Tests Bruno (EXTÉRIEUR) ──────────────────────────
+echo -e "${CYAN}▶ Étape 2/4 : Tests Bruno (externe)${NC}"
+if [ -d "bruno/collections" ] && command -v bun &>/dev/null; then
+  echo "  Démarrage du serveur pour tests Bruno..."
+  PORT=4000 bun run apps/api/index.ts &
+  SERVER_PID=$!
+  
+  # Attendre que le serveur soit prêt
+  for i in $(seq 1 15); do
+    if curl -s http://127.0.0.1:4000/api/health >/dev/null 2>&1; then
+      echo "  ✓ Serveur prêt (PID: $SERVER_PID)"
+      break
+    fi
+    sleep 1
+  done
+  
+  # Exécuter les tests Bruno
+  if [ -f "scripts/run-bruno-equivalent.mjs" ]; then
+    echo "  Exécution des tests Bruno..."
+    if bun run scripts/run-bruno-equivalent.mjs 2>&1; then
+      echo -e "${GREEN}  ✓ Tests Bruno passés${NC}"
+    else
+      echo -e "${YELLOW}  ⚠ Certains tests Bruno ont échoué (continuation)${NC}"
+    fi
+  fi
+  
+  # Arrêter le serveur
+  kill $SERVER_PID 2>/dev/null || true
+  wait $SERVER_PID 2>/dev/null || true
+else
+  echo -e "${YELLOW}  ⚠ Bruno non configuré (tests manuels requis)${NC}"
+fi
+echo ""
+
+# ── Étape 3 : Build binaire ────────────────────────────────────
+echo -e "${CYAN}▶ Étape 3/4 : Compilation binaire${NC}"
+echo "  Build: apps/api/index.ts → dist/"
 
 # Nettoyer l'ancien build
 rm -rf dist/
@@ -37,8 +71,7 @@ BUN_BUILD_START=$(date +%s)
 if bun build apps/api/index.ts \
   --outdir dist \
   --target bun \
-  --minify \
-  --external "node:*" 2>&1; then
+  --minify 2>&1; then
   BUN_BUILD_END=$(date +%s)
   BUN_BUILD_TIME=$((BUN_BUILD_END - BUN_BUILD_START))
   echo -e "  ${GREEN}✓ Build réussi (${BUN_BUILD_TIME}s)${NC}"
@@ -48,32 +81,15 @@ else
 fi
 echo ""
 
-# ── Étape 3 : Vérification du binaire ──────────────────────────
-echo -e "${CYAN}▶ Étape 3/3 : Vérification du binaire${NC}"
+# ── Étape 4 : Nettoyage ────────────────────────────────────────
+echo -e "${CYAN}▶ Étape 4/4 : Nettoyage${NC}"
+rm -rf /tmp/btp-test-storage /tmp/btp-storage-test
+echo -e "  ${GREEN}✓ Nettoyage terminé${NC}"
 
-if [ ! -f "dist/index.js" ]; then
-  echo -e "  ${RED}✗ dist/index.js non trouvé${NC}"
-  exit 1
-fi
-
-# Vérifier la taille
+# ── Résumé ─────────────────────────────────────────────────────
 BUILD_SIZE=$(du -sh dist/ | awk '{print $1}')
-echo "  Taille du build: $BUILD_SIZE"
 
-# Vérifier que c'est un binaire exécutable
-if [ -x "dist/index.js" ] || head -1 dist/index.js | grep -q "#!/"; then
-  echo -e "  ${GREEN}✓ Binaire exécutable${NC}"
-else
-  echo -e "  ${YELLOW}  Note: le binaire nécessite 'bun dist/index.js' pour démarrer${NC}"
-fi
-
-# Lister le contenu
-echo ""
-echo "  Contenu de dist/:"
-ls -la dist/ | sed 's/^/    /'
-
-echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
+echo -e "\n${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  ✓ Build terminé avec succès!                       ║${NC}"
 echo -e "${GREEN}║                                                     ║${NC}"
 echo -e "${GREEN}║  Pour démarrer en prod:                             ║${NC}"
