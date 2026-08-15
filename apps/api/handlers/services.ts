@@ -106,6 +106,8 @@ export const handleServiceGet: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+    return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   const service = await app.db.sql`
     SELECT id, name, slug, short_description, full_description, icon, sort_order, status, version, created_at, updated_at
@@ -181,6 +183,8 @@ export const handleServiceUpdate: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+    return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   try {
     const body = ctx.state.body as Record<string, unknown> ?? {};
@@ -247,6 +251,8 @@ export const handleServiceDelete: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+    return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   const existing = await app.db.sql`SELECT * FROM services WHERE id = ${serviceId} AND deleted_at IS NULL`;
   if (!existing) {
@@ -283,6 +289,8 @@ export const handleServicePublish: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+    return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   await app.db.sql`UPDATE services SET status = 'published', updated_at = NOW() WHERE id = ${serviceId}`;
 
@@ -314,6 +322,8 @@ export const handleServiceUnpublish: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+    return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   await app.db.sql`UPDATE services SET status = 'draft', updated_at = NOW() WHERE id = ${serviceId}`;
 

@@ -100,6 +100,9 @@ export const handleContactGet: RouteHandler = async (req, ctx) => {
   if (!contactId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contactId)) {
+    return jsonErrorResponse({ message: "Format d'identifiant invalide", code: "INVALID_UUID" }, 400);
+  }
 
   try {
     const row = await app.db.sql.unsafe(
@@ -254,6 +257,9 @@ export const handleQuoteGet: RouteHandler = async (req, ctx) => {
   const quoteId = ctx.params.id;
   if (!quoteId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(quoteId)) {
+    return jsonErrorResponse({ message: "Format d'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 
   try {
