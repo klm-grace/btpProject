@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { isValidUUID } from "../utils/validate";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -106,7 +107,7 @@ export const handleServiceGet: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+  if (!isValidUUID(serviceId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   const service = await app.db.sql`
@@ -183,7 +184,7 @@ export const handleServiceUpdate: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+  if (!isValidUUID(serviceId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   try {
@@ -251,7 +252,7 @@ export const handleServiceDelete: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+  if (!isValidUUID(serviceId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   const existing = await app.db.sql`SELECT * FROM services WHERE id = ${serviceId} AND deleted_at IS NULL`;
@@ -289,7 +290,7 @@ export const handleServicePublish: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+  if (!isValidUUID(serviceId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   await app.db.sql`UPDATE services SET status = 'published', updated_at = NOW() WHERE id = ${serviceId}`;
@@ -322,7 +323,7 @@ export const handleServiceUnpublish: RouteHandler = async (req, ctx) => {
   if (!serviceId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) {
+  if (!isValidUUID(serviceId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);}
 
   await app.db.sql`UPDATE services SET status = 'draft', updated_at = NOW() WHERE id = ${serviceId}`;

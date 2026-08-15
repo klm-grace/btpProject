@@ -21,14 +21,7 @@ declare global {
 
   type LogSink = (entry: LogEntry) => void;
 
-  interface Logger {
-    trace(message: string, fields?: Record<string, unknown>): void;
-    debug(message: string, fields?: Record<string, unknown>): void;
-    info(message: string, fields?: Record<string, unknown>): void;
-    warn(message: string, fields?: Record<string, unknown>): void;
-    error(message: string, fields?: Record<string, unknown>): void;
-    child(fields: Record<string, unknown>): Logger;
-  }
+
 
   interface LoggerConfig {
     level: LogLevel;
@@ -37,6 +30,25 @@ declare global {
     baseFields?: Record<string, unknown>;
     /** true = sortie formatée couleur (terminal) ; false/absent = JSON brut (production). */
     formatted?: boolean;
+    /** Activer la rotation automatique des fichiers log. */
+    rotate?: boolean;
+    /** Dossier de stockage des fichiers log. */
+    logDir?: string;
+    /** Taille max par fichier en bytes. */
+    maxSizeBytes?: number;
+    /** Nombre max de fichiers rotativés. */
+    maxFiles?: number;
+  }
+
+  interface Logger {
+    trace(message: string, fields?: Record<string, unknown>): void;
+    debug(message: string, fields?: Record<string, unknown>): void;
+    info(message: string, fields?: Record<string, unknown>): void;
+    warn(message: string, fields?: Record<string, unknown>): void;
+    error(message: string, fields?: Record<string, unknown>): void;
+    child(fields: Record<string, unknown>): Logger;
+    rotateLogs(): void;
+    cleanupOldLogs(): number;
   }
 
   // ---------------------------------------------------------------------------

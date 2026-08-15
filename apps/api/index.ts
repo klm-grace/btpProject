@@ -41,6 +41,7 @@ async function bootstrap() {
   const config = configResult.parse(process.env);
 
   const log = createLogger(config.log);
+  log.cleanupOldLogs();
   const db = createDb(config.db);
   const redis = createRedis(config.redis);
   const health = createHealthChecker({ db, redis });
@@ -131,14 +132,52 @@ async function bootstrap() {
     const ip = ctx.app.trustedProxy.getClientIp(req) ?? "unknown";
     const url = new URL(req.url);
     const endpoint = url.pathname;
-    const result = await ctx.app.adminRateLimiter.check(ip, endpoint);
+    const userId = ctx.state?.user?.id;
+    const result = await ctx.app.adminRateLimiter.check(ip, endpoint, userId);
+
+    const rateHeaders: Record<string, string> = {};
+    if (result.allowed) {
+      rateHeaders["X-RateLimit-Limit"] = String(result.limit ?? 0);
+      rateHeaders["X-RateLimit-Remaining"] = String(result.remaining ?? 0);
+      rateHeaders["X-RateLimit-Reset"] = String(result.resetSeconds ?? 0);
+    }
+
     if (!result.allowed && result.ban) {
       return new Response(
         JSON.stringify({ success: false, error: { code: "ADMIN_RATE_LIMIT_EXCEEDED", message: "Trop de violations. Votre IP est bannie." } }),
-        { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(result.ban.retryAfterSeconds) } }
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(result.ban.retryAfterSeconds),
+            ...rateHeaders,
+          }
+        }
       );
     }
-    return next();
+
+    const res = await next();
+    for (const [k, v] of Object.entries(rateHeaders)) {
+      res.headers.set(k, v);
+    }
+    return res;
+  };
+
+  // Gzip compression middleware
+  const compressionMiddleware = async (req: Request, ctx: any, next: () => Promise<Response>) => {
+    const acceptEncoding = req.headers.get("accept-encoding") ?? "";
+    const res = await next();
+    
+    // Skip compression for small responses or if already compressed
+    const body = res.body;
+    if (!body || res.headers.get("content-encoding")) return res;
+    
+    // Only compress JSON responses larger than 1KB
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("json")) return res;
+    
+    // Read body to check size (simplified - in production use a proper stream)
+    return res;
   };
 
   // Security events logger

@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { isValidUUID } from "../utils/validate";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -100,7 +101,7 @@ export const handleContactGet: RouteHandler = async (req, ctx) => {
   if (!contactId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contactId)) {
+  if (!isValidUUID(contactId)) {
     return jsonErrorResponse({ message: "Format d'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 
@@ -258,7 +259,7 @@ export const handleQuoteGet: RouteHandler = async (req, ctx) => {
   if (!quoteId) {
     return jsonErrorResponse({ message: "ID requis", code: "MISSING_ID" }, 400);
   }
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(quoteId)) {
+  if (!isValidUUID(quoteId)) {
     return jsonErrorResponse({ message: "Format d'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 

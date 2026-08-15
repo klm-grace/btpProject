@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { isValidUUID } from "../utils/validate";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
 
@@ -61,7 +62,7 @@ export const handleFlagUser: RouteHandler = async (req, ctx) => {
   }
 
   // Validate UUID format to prevent SQL errors
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUserId)) {
+  if (!isValidUUID(targetUserId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 

@@ -1,4 +1,10 @@
 import type { SecurityEventType, SecurityEventRecord, SecurityEventsDeps, SecurityEventsConfig } from "./types.ts";
+import { createHash } from "node:crypto";
+
+function hashIP(ip: string | null): string | null {
+  if (!ip) return null;
+  return createHash("sha256").update(ip).digest("hex").slice(0, 8);
+}
 
 export function createSecurityEvents(deps: SecurityEventsDeps, config: SecurityEventsConfig) {
   const db = deps.db;
@@ -21,7 +27,7 @@ export function createSecurityEvents(deps: SecurityEventsDeps, config: SecurityE
         require("node:crypto").randomUUID(),
         userId ?? null,
         eventType,
-        ip ?? null,
+        hashIP(ip ?? null),
         userAgent ?? null,
         JSON.stringify(details),
       ],

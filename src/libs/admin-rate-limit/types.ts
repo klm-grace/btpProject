@@ -23,5 +23,15 @@ export interface BanInfo {
 export interface AdminRateLimitResult {
   allowed: boolean;
   resetSeconds?: number;
+  remaining?: number;
+  limit?: number;
   ban?: BanInfo;
+}
+
+export interface BanHistoryEntry {
+  ip: string;
+  userId: string | null;
+  violations: number;
+  bannedAt: string;
+  banUntil: string;
 }

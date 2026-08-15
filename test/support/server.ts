@@ -196,9 +196,12 @@ export async function getTestServer(): Promise<ApiServer> {
       purgeOldEvents: async () => 0,
     },
     adminRateLimiter: {
-      check: async () => ({ allowed: true }),
+      check: async () => ({ allowed: true }) as any,
       clearBan: async () => {},
-    },
+      clearUserBan: async () => {},
+      cleanupExpiredBans: async () => 0,
+      getBanHistory: async () => [],
+    } as any,
     adminRateLimitMiddleware: async (_req: any, _ctx: any, next: any) => next(),
   };
 

@@ -4,6 +4,7 @@
 
 import type { RouteHandler } from "../types";
 import { jsonOk, jsonErrorResponse } from "@libs/http";
+import { isValidUUID } from "../utils/validate";
 import { getAppContext } from "../utils/context";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -82,7 +83,7 @@ export const handleSeoMetaGet: RouteHandler = async (req, ctx) => {
   }
 
   // Validate UUID format for entityId
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) {
+  if (!isValidUUID(entityId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 
@@ -237,7 +238,7 @@ export const handleSeoMetaDelete: RouteHandler = async (req, ctx) => {
   }
 
   // Validate UUID format
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) {
+  if (!isValidUUID(entityId)) {
     return jsonErrorResponse({ message: "Format d\'identifiant invalide", code: "INVALID_UUID" }, 400);
   }
 

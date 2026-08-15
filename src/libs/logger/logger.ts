@@ -1,3 +1,6 @@
+import { writeFileSync, appendFileSync, existsSync, mkdirSync, statSync, unlinkSync, renameSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
 const LEVEL_RANK: Record<LogLevel, number> = {
   trace: 10,
   debug: 20,
@@ -139,6 +142,33 @@ function formattedSink(entry: LogEntry): void {
   }
 }
 
+// ── Rotation automatique ────────────────────────────────────────────────────
+
+const DEFAULT_LOG_DIR = "./logs";
+const DEFAULT_MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 Mo
+const DEFAULT_MAX_FILES = 5;
+
+function rotateLogFile(logFile: string, maxSizeBytes: number = DEFAULT_MAX_SIZE_BYTES, maxFiles: number = DEFAULT_MAX_FILES): void {
+  if (!existsSync(logFile)) return;
+  try {
+    const size = statSync(logFile).size;
+    if (size < maxSizeBytes) return;
+    const oldest = `${logFile}.${maxFiles}`;
+    if (existsSync(oldest)) unlinkSync(oldest);
+    for (let i = maxFiles - 1; i >= 1; i--) {
+      const src = `${logFile}.${i}`;
+      const dst = `${logFile}.${i + 1}`;
+      if (existsSync(src)) {
+        try { unlinkSync(dst); } catch { /* ignore */ }
+        try { renameSync(src, dst); } catch { /* ignore */ }
+      }
+    }
+    try { renameSync(logFile, `${logFile}.1`); } catch { /* ignore */ }
+  } catch {
+    // Ignorer les erreurs de rotation
+  }
+}
+
 // ── Factory ──────────────────────────────────────────────────────────────────
 
 /**
@@ -173,12 +203,56 @@ export function createLogger(config: LoggerConfig): Logger {
     });
   }
 
+  // File logging with rotation
+  const logFile = config.logDir ? join(config.logDir, "app.log") : undefined;
+  if (logFile && config.rotate !== false) {
+    if (!existsSync(config.logDir!)) mkdirSync(config.logDir!, { recursive: true });
+  }
+
+  function writeToFile(entry: LogEntry): void {
+    if (!logFile) return;
+    try {
+      rotateLogFile(logFile, config.maxSizeBytes ?? DEFAULT_MAX_SIZE_BYTES, config.maxFiles ?? DEFAULT_MAX_FILES);
+      appendFileSync(logFile, JSON.stringify({
+        ts: entry.time,
+        level: entry.level,
+        msg: entry.message,
+        ctx: entry.fields,
+      }) + "\n");
+    } catch {
+      // Ignorer les erreurs d'écriture
+    }
+  }
+
   return {
-    trace: (m, f) => write("trace", m, f),
-    debug: (m, f) => write("debug", m, f),
-    info: (m, f) => write("info", m, f),
-    warn: (m, f) => write("warn", m, f),
-    error: (m, f) => write("error", m, f),
+    trace: (m, f) => { write("trace", m, f); },
+    debug: (m, f) => { write("debug", m, f); },
+    info: (m, f) => { write("info", m, f); },
+    warn: (m, f) => { write("warn", m, f); },
+    error: (m, f) => { write("error", m, f); },
     child: makeChild,
+    // Méthode supplémentaire pour forcer la rotation
+    rotateLogs: () => {
+      if (logFile) rotateLogFile(logFile, config.maxSizeBytes ?? DEFAULT_MAX_SIZE_BYTES, config.maxFiles ?? DEFAULT_MAX_FILES);
+    },
+    // Méthode pour nettoyer les anciens logs
+    cleanupOldLogs: (): number => {
+      if (!logFile || !config.logDir || !existsSync(config.logDir)) return 0;
+      let removed = 0;
+      try {
+        const dir = config.logDir;
+        const files = readdirSync(dir);
+        for (const file of files) {
+          if (file.startsWith("app.log.") && file !== "app.log.1") {
+            const num = parseInt(file.split(".").pop() ?? "0", 10);
+            if (num > (config.maxFiles ?? DEFAULT_MAX_FILES)) {
+              unlinkSync(join(dir, file));
+              removed++;
+            }
+          }
+        }
+      } catch { /* ignore */ }
+      return removed;
+    },
   };
 }

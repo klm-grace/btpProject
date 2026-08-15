@@ -57,7 +57,7 @@ describe("SecurityEvents", () => {
     const result = await events.getEvents({ eventType: "login_failed" });
     expect(result.length).toBe(1);
     expect(result[0]!.event_type).toBe("login_failed");
-    expect(result[0]!.ip_address).toBe("192.168.1.1");
+    expect(result[0]!.ip_address).toBe("c5eb5a4c");
   });
 
   it("filtre par eventType", async () => {
@@ -79,7 +79,7 @@ describe("SecurityEvents", () => {
     await events.recordEvent({ eventType: "login_failed", ip: "5.5.5.5" });
     const filtered = await events.getEvents({ userIds: [userId], eventType: "login_failed" });
     expect(filtered.length).toBe(1);
-    expect(filtered[0]!.ip_address).toBe("1.2.3.4");
+    expect(filtered[0]!.ip_address).toBe("6694f83c");
   });
 
   it("purgeOldEvents retourne 0 si autoPurgeHours=0", async () => {
