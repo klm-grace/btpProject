@@ -157,6 +157,7 @@ export const handleMediaUpload: RouteHandler = async (req, ctx) => {
 
 /**
  * DELETE /api/media/:id — Supprime un média.
+ * Vérification de propriété: seul l'auteur peut supprimer son média.
  */
 export const handleMediaDelete: RouteHandler = async (req, ctx) => {
   const app = getAppContext(ctx);
@@ -173,9 +174,9 @@ export const handleMediaDelete: RouteHandler = async (req, ctx) => {
   }
 
   try {
-    // Récupérer le média et ses variantes
+    // Récupérer le média et vérifier la propriété
     const media = await app.db.sql`
-      SELECT m.id, m.storage_key, m.mime_type, m.file_size
+      SELECT m.id, m.storage_key, m.mime_type, m.file_size, m.uploaded_by
       FROM media m
       WHERE m.id = ${mediaId}
       LIMIT 1
@@ -183,6 +184,12 @@ export const handleMediaDelete: RouteHandler = async (req, ctx) => {
 
     if (media.length === 0) {
       return jsonErrorResponse({ message: "Média non trouvé", code: "NOT_FOUND" }, 404);
+    }
+
+    // 🔒 IDOR FIX: Vérifier que le média appartient à l'utilisateur connecté
+    if (media[0]!.uploaded_by !== user.id) {
+      app.log.warn("IDOR attempt blocked", { mediaId, userId: user.id, mediaOwnerId: media[0]!.uploaded_by });
+      return jsonErrorResponse({ message: "Non autorisé", code: "FORBIDDEN" }, 403);
     }
 
     const variants = await app.db.sql`
