@@ -137,9 +137,11 @@ describe("section 09 — Upload média", () => {
       body: form,
     });
     expect(res.status).toBe(400);
-    const data = (await res.json()) as { success: boolean; error: { code: string } };
+    const data = (await res.json()) as { success: boolean; error: { code: string; message: string } };
     expect(data.success).toBe(false);
-    expect(data.error.code).toBe("INVALID_MAGIC");
+    // Code interne NEVER exposé — message générique
+    expect(data.error.code).toBe("UPLOAD_VALIDATION_FAILED");
+    expect(data.error.message).toBe("Format de fichier non supporté");
   });
 
   it("POST /api/media stocke le fichier sur le disque", async () => {
