@@ -37,18 +37,16 @@ beforeAll(async () => {
   });
   expect(loginRes.status).toBe(200);
   cookies = parseCookies(loginRes.headers.get("set-cookie") ?? "");
-  
-  // Get CSRF token
-  const csrfRes = await fetch(`${baseUrl}/api/auth/csrf`, {
-    headers: { "Cookie": cookieHeader() },
-  });
-  const csrfData = await csrfRes.json() as { token: string };
-  csrfToken = csrfData.token;
 });
 
 afterAll(async () => {
   await releaseTestServer();
 });
+
+function getCsrfToken(): string {
+  // Get fresh CSRF token before each mutation
+  return cookies.csrf_token ?? "";
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -72,7 +70,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ name: "Résidentiel", slug, description: "Test", sortOrder: 0 }),
@@ -86,7 +84,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ name: "Dup", slug }),
@@ -95,7 +93,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ name: "Dup2", slug }),
@@ -108,7 +106,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ name: "Test", slug: "Invalid Slug!" }),
@@ -129,7 +127,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Ma Réalisation", slug, status: "draft" }),
@@ -143,7 +141,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Dup 1", slug }),
@@ -152,7 +150,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Dup 2", slug }),
@@ -165,7 +163,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Test Get", slug: "test-get-" + Date.now() }),
@@ -184,7 +182,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Test Update", slug: "test-update-" + Date.now() }),
@@ -196,7 +194,7 @@ describe("section 10 — Portfolio", () => {
         method: "PUT",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Test Update Modifié" }),
@@ -209,7 +207,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Test Publish", slug: "test-publish-" + Date.now() }),
@@ -221,7 +219,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
         },
       });
       expect(res.status).toBe(200);
@@ -232,7 +230,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Test Unpublish", slug: "test-unpublish-" + Date.now() }),
@@ -244,7 +242,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
         },
       });
       expect(res.status).toBe(200);
@@ -255,7 +253,7 @@ describe("section 10 — Portfolio", () => {
         method: "POST",
         headers: {
           "Cookie": cookieHeader(),
-          "X-CSRF-Token": csrfToken,
+          "X-CSRF-Token": getCsrfToken(),
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: "Test Delete", slug: "test-delete-" + Date.now() }),
