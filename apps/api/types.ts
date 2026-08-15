@@ -14,6 +14,18 @@ import type { Cors, SecurityHeaders, TrustedProxy } from "@libs/http-security";
 import type { RateLimiter, RateLimitMiddleware } from "@libs/rate-limit";
 import type { Redis } from "@libs/redis";
 import type { Outbox } from "@libs/outbox";
+import type { StorageProvider } from "@libs/storage";
+import type { UploadEngine } from "@libs/upload";
+
+/** Utilisateur authentifié, injecté par le middleware session. */
+export interface AuthUser {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  roles: string[];
+  mfaEnabled: boolean;
+}
 
 /**
  * Contexte applicatif injecté dans les handlers et middlewares.
@@ -36,6 +48,14 @@ export interface AppContext {
   authRateLimitMiddleware: RateLimitMiddleware;
   outbox: Outbox;
   publicRateLimitMiddleware: RateLimitMiddleware;
+  /** Fournisseur de stockage (disk ou R2, injecté par l'app). */
+  storage: StorageProvider & {
+    activeBackend: () => "disk" | "r2";
+    getDiskSize: () => Promise<number>;
+    shouldMigrate: () => Promise<boolean>;
+  };
+  /** Moteur d'upload (validation + stockage + variantes). */
+  upload: UploadEngine;
 }
 
 /**
@@ -44,5 +64,8 @@ export interface AppContext {
  * passé via `handle(req, context)` dans `ctx.state`).
  */
 export interface RouteContext extends BaseRouteContext {
-  state: BaseRouteContext["state"] & { app: AppContext };
+  state: BaseRouteContext["state"] & {
+    app: AppContext;
+    user: AuthUser | null;
+  };
 }

@@ -15,6 +15,9 @@ import { createRbac } from "@libs/rbac";
 import { createCsrf } from "@libs/csrf";
 import { createRateLimiter, createRateLimitMiddleware } from "@libs/rate-limit";
 import { createOutbox, type OutboxDeps, type OutboxConfig } from "@libs/outbox";
+import { createStorage } from "@libs/storage";
+import { createUpload } from "@libs/upload";
+import { createBodyChecker } from "@libs/body";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
 import type { RbacDeps, RbacConfig } from "@libs/rbac/types";
 import type { CsrfConfig } from "@libs/csrf/types";
@@ -22,9 +25,9 @@ import { z } from "zod";
 
 import { registerRoutes } from "./routes";
 import { getRequestId, addRequestIdHeader } from "./utils/request-id";
-import { isBodyTooLarge, readJsonBody } from "./utils/body";
+import { readJsonBody } from "./utils/body";
 import { parseCookie } from "./utils/cookies";
-import { MAX_BODY_BYTES, COOKIE_NAMES } from "./constants";
+import { COOKIE_NAMES } from "./constants";
 import type { AppContext } from "./types";
 
 const EmailSchema = z.string().email().max(254);
@@ -134,9 +137,40 @@ async function bootstrap() {
   const outboxDeps: OutboxDeps = { db, log };
   const outbox = createOutbox(outboxDeps, outboxCfg);
 
+  // Body checker — limites selon Content-Type
+  const bodyChecker = createBodyChecker({
+    jsonMaxBytes: 4 * 1024, // 4 Ko pour JSON
+    multipartMaxBytes: config.storage.maxFileSizeBytes, // 10 Mo pour uploads
+  });
+
+  // Storage — disque local ou R2, avec migration automatique
+  const storageConfig = {
+    backend: config.storage.backend,
+    diskPath: config.storage.diskPath,
+    diskMaxBytes: config.storage.diskMaxBytes,
+    r2AccountId: "", // non utilisé dans la config actuelle
+    r2Endpoint: config.storage.backend === "r2" ? "https://r2.cloudflarestorage.com" : "",
+    r2Bucket: "btp-media",
+    r2AccessKeyId: process.env.STORAGE_R2_ACCESS_KEY_ID ?? "",
+    r2SecretAccessKey: process.env.STORAGE_R2_SECRET_ACCESS_KEY ?? "",
+  };
+  const storage = createStorage({ log }, storageConfig);
+
+  // Upload engine
+  const uploadConfig = {
+    maxFileSizeBytes: config.storage.maxFileSizeBytes,
+    allowedMimeTypes: config.storage.allowedMimeTypes,
+    imageMaxWidth: config.storage.imageMaxWidth,
+    imageMaxHeight: config.storage.imageMaxHeight,
+    variantSizes: config.storage.variantSizes,
+    webpQuality: 80,
+  };
+  const upload = createUpload({ storage, log: log.child({ module: "upload" }) }, uploadConfig);
+
   const ctx: AppContext = {
     config, log, db, redis, health, auth, rbac, csrf, cors, securityHeaders, trustedProxy,
     rateLimiter, authRateLimiter, authRateLimitMiddleware, outbox, publicRateLimitMiddleware,
+    storage, upload,
   };
 
   const router = createRouter();
@@ -146,7 +180,8 @@ async function bootstrap() {
     const requestId = getRequestId(req);
 
     try {
-      if (isBodyTooLarge(req, MAX_BODY_BYTES)) {
+      // Vérification taille body selon Content-Type
+      if (bodyChecker.check(req)) {
         return new Response("Request entity too large", { status: 413 });
       }
 

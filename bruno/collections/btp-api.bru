@@ -1,0 +1,136 @@
+meta {
+  name: BTP API - Section 09 Upload Media
+  type: collection
+  sequencing: off
+}
+
+---
+
+# 1. Login (prérequis)
+request {
+  url: {{base_url}}/api/auth/login
+  method: POST
+  body: json
+  content-type: application/json
+}
+
+{
+  "email": "admin@btp-dev.local",
+  "password": "admin1234"
+}
+
+---
+responses {
+  response_1 {
+    name: Success
+    match {
+      $status: == 200
+    }
+    extractjs {
+      // Extraire le CSRF token et le session cookie
+      const setCookie = response.headers.get('set-cookie') || '';
+      const parts = setCookie.split(', ');
+      const csrfPart = parts.find(p => p.startsWith('csrf_token='));
+      const sidPart = parts.find(p => p.startsWith('sid='));
+      
+      if (csrfPart) {
+        const token = csrfPart.split(';')[0].split('=')[1];
+        bruno.environment.set('csrf_token', token);
+      }
+      if (sidPart) {
+        const sessionId = sidPart.split(';')[0].split('=')[1];
+        bruno.environment.set('session_id', sessionId);
+      }
+    }
+  }
+}
+
+---
+
+# 2. GET CSRF token
+request {
+  url: {{base_url}}/api/auth/csrf
+  method: GET
+}
+
+---
+responses {
+  response_1 {
+    name: Success
+    match {
+      $status: == 200
+      $.data.csrfToken: type string
+    }
+  }
+}
+
+---
+
+# 3. Upload image valide (PNG)
+request {
+  url: {{base_url}}/api/media
+  method: POST
+  body: formdata
+  content-type: multipart/form-data
+  cookie: sid={{session_id}}; csrf_token={{csrf_token}}
+  header: X-CSRF-Token: {{csrf_token}}
+  attach: file@test/fixtures/sample.png
+}
+
+---
+responses {
+  response_1 {
+    name: Success - Upload PNG
+    match {
+      $status: == 200
+      $.success: == true
+      $.data.key: type string
+      $.data.mime: == "image/png"
+      $.data.size: > 0
+    }
+  }
+}
+
+---
+
+# 4. Upload sans session → 403
+request {
+  url: {{base_url}}/api/media
+  method: POST
+  body: formdata
+  content-type: multipart/form-data
+  attach: file@test/fixtures/sample.png
+}
+
+---
+responses {
+  response_1 {
+    name: Unauthorized
+    match {
+      $status: == 403
+    }
+  }
+}
+
+---
+
+# 5. Upload fichier vide → 400
+request {
+  url: {{base_url}}/api/media
+  method: POST
+  body: formdata
+  content-type: multipart/form-data
+  cookie: sid={{session_id}}; csrf_token={{csrf_token}}
+  header: X-CSRF-Token: {{csrf_token}}
+}
+
+---
+responses {
+  response_1 {
+    name: Empty file
+    match {
+      $status: == 400
+      $.error.code: == "MISSING_FILE"
+    }
+  }
+}

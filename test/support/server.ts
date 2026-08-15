@@ -25,14 +25,16 @@ import { createRbac } from "@libs/rbac";
 import { createCsrf } from "@libs/csrf";
 import { createRateLimiter, createRateLimitMiddleware } from "@libs/rate-limit";
 import { createOutbox, type OutboxDeps, type OutboxConfig } from "@libs/outbox";
+import { createBodyChecker } from "@libs/body";
+import { createStorage } from "@libs/storage";
+import { createUpload } from "@libs/upload";
 import type { AuthDeps, AuthConfig } from "@libs/auth/types";
 import type { RbacDeps, RbacConfig } from "@libs/rbac/types";
 import type { CsrfConfig } from "@libs/csrf/types";
 import { registerRoutes } from "../../apps/api/routes";
 import { getRequestId, addRequestIdHeader } from "../../apps/api/utils/request-id";
-import { isBodyTooLarge } from "../../apps/api/utils/body";
 import { parseCookie } from "../../apps/api/utils/cookies";
-import { MAX_BODY_BYTES, COOKIE_NAMES } from "../../apps/api/constants";
+import { COOKIE_NAMES } from "../../apps/api/constants";
 import type { AppContext } from "../../apps/api/types";
 
 export interface ApiServer {
@@ -151,10 +153,45 @@ export async function getTestServer(): Promise<ApiServer> {
   const outboxDeps: OutboxDeps = { db, log };
   const outbox = createOutbox(outboxDeps, outboxCfg);
 
+  // Storage — disque local pour les tests
+  const storage = createStorage(
+    { log },
+    {
+      backend: "disk",
+      diskPath: "/tmp/btp-test-storage",
+      diskMaxBytes: 100_000_000,
+      r2AccountId: "",
+      r2Endpoint: "https://test.r2.cloudflarestorage.com",
+      r2Bucket: "test-bucket",
+      r2AccessKeyId: "test-key",
+      r2SecretAccessKey: "test-secret",
+    }
+  );
+
+  // Upload engine pour les tests
+  const upload = createUpload(
+    { storage, log: log.child({ module: "upload" }) },
+    {
+      maxFileSizeBytes: 10 * 1024 * 1024,
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+      imageMaxWidth: 1920,
+      imageMaxHeight: 1080,
+      variantSizes: [150, 600],
+      webpQuality: 80,
+    }
+  );
+
   const ctx: AppContext = {
     config, log, db, redis, health, auth, rbac, csrf, cors, securityHeaders, trustedProxy,
     rateLimiter, authRateLimiter, authRateLimitMiddleware, outbox, publicRateLimitMiddleware,
+    storage, upload,
   };
+
+  // Body checker — limites selon Content-Type
+  const bodyChecker = createBodyChecker({
+    jsonMaxBytes: 4 * 1024,
+    multipartMaxBytes: 10 * 1024 * 1024,
+  });
 
   const router = createRouter();
   registerRoutes(router, ctx);
@@ -162,7 +199,8 @@ export async function getTestServer(): Promise<ApiServer> {
   const fetchHandler = async (req: Request) => {
     const requestId = getRequestId(req);
     try {
-      if (isBodyTooLarge(req, MAX_BODY_BYTES)) {
+      // Vérification taille body selon Content-Type
+      if (bodyChecker.check(req)) {
         return new Response("Request entity too large", { status: 413 });
       }
       const preflight = cors.handlePreflight(req);

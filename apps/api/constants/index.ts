@@ -2,7 +2,7 @@
  * Constantes applicatives pour apps/api.
  */
 
-export const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 Mo
+export const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10 Mo — taille max d'un fichier uploadé
 export const REQUEST_TIMEOUT_MS = 10_000;
 
 export const COOKIE_NAMES = {

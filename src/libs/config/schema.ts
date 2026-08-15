@@ -42,6 +42,19 @@ const envSchema = z.object({
   publicRateLimitMax: z.coerce.number().int().min(1).max(100).default(5),
   publicRateLimitWindow: z.coerce.number().int().min(10).max(3600).default(300),
   consentVersion: z.string().default("1.0"),
+  // ── Storage / Upload (section 09) ─────────────────────────────────────
+  storageBackend: z.enum(["disk", "r2"]).default("disk"),
+  storageDiskPath: z.string().default("./data/uploads"),
+  storageDiskMaxBytes: z.coerce.number().int().min(1).default(20 * 1024 * 1024 * 1024),
+  storageR2Endpoint: z.string().default(""),
+  storageR2Bucket: z.string().default("btp-media"),
+  storageR2AccessKeyId: z.string().default(""),
+  storageR2SecretAccessKey: z.string().default(""),
+  maxFileSizeBytes: z.coerce.number().int().min(1).default(10 * 1024 * 1024),
+  allowedMimeTypes: z.string().default("image/jpeg,image/png,image/webp,image/gif"),
+  imageMaxWidth: z.coerce.number().int().min(1).default(1920),
+  imageMaxHeight: z.coerce.number().int().min(1).default(1080),
+  variantSizes: z.string().default("150,600"),
 }).refine(
   (data) => data.app !== "production" || data.sessionSecret.length >= 32,
   {
@@ -70,6 +83,19 @@ type ParsedConfig = {
   publicRateLimitMax: number;
   publicRateLimitWindow: number;
   consentVersion: string;
+  // ── Storage / Upload (section 09) ─────────────────────────────────────
+  storageBackend: "disk" | "r2";
+  storageDiskPath: string;
+  storageDiskMaxBytes: number;
+  storageR2Endpoint: string;
+  storageR2Bucket: string;
+  storageR2AccessKeyId: string;
+  storageR2SecretAccessKey: string;
+  maxFileSizeBytes: number;
+  allowedMimeTypes: string;
+  imageMaxWidth: number;
+  imageMaxHeight: number;
+  variantSizes: string;
 };
 
 function toConfig(parsed: ParsedConfig): AppConfig {
@@ -92,6 +118,16 @@ function toConfig(parsed: ParsedConfig): AppConfig {
     publicRateLimitMax: parsed.publicRateLimitMax,
     publicRateLimitWindow: parsed.publicRateLimitWindow,
     consentVersion: parsed.consentVersion,
+    storage: {
+      backend: parsed.storageBackend,
+      diskPath: parsed.storageDiskPath,
+      diskMaxBytes: parsed.storageDiskMaxBytes,
+      maxFileSizeBytes: parsed.maxFileSizeBytes,
+      allowedMimeTypes: parsed.allowedMimeTypes.split(",").map((m) => m.trim()).filter(Boolean),
+      imageMaxWidth: parsed.imageMaxWidth,
+      imageMaxHeight: parsed.imageMaxHeight,
+      variantSizes: parsed.variantSizes.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => n > 0),
+    },
   };
 }
 
@@ -124,6 +160,19 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         publicRateLimitMax: raw.PUBLIC_RATE_LIMIT_MAX,
         publicRateLimitWindow: raw.PUBLIC_RATE_LIMIT_WINDOW,
         consentVersion: raw.CONSENT_VERSION,
+        // ── Storage / Upload (section 09) ───────────────────────────────
+        storageBackend: raw.STORAGE_BACKEND,
+        storageDiskPath: raw.STORAGE_DISK_PATH,
+        storageDiskMaxBytes: raw.STORAGE_DISK_MAX_BYTES,
+        storageR2Endpoint: raw.STORAGE_R2_ENDPOINT,
+        storageR2Bucket: raw.STORAGE_R2_BUCKET,
+        storageR2AccessKeyId: raw.STORAGE_R2_ACCESS_KEY_ID,
+        storageR2SecretAccessKey: raw.STORAGE_R2_SECRET_ACCESS_KEY,
+        maxFileSizeBytes: raw.MAX_FILE_SIZE_BYTES,
+        allowedMimeTypes: raw.ALLOWED_MIME_TYPES,
+        imageMaxWidth: raw.IMAGE_MAX_WIDTH,
+        imageMaxHeight: raw.IMAGE_MAX_HEIGHT,
+        variantSizes: raw.VARIANT_SIZES,
       });
       return toConfig(parsed);
     },

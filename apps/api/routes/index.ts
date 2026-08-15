@@ -8,6 +8,7 @@ import { handleHealth, handleReady } from "../handlers/health";
 import { handleLogin, handleLogout, handleGetMe, handleChangePassword, handleGetCsrf } from "../handlers/auth";
 import { handleMfaVerify, handleMfaSetup } from "../handlers/mfa";
 import { handleContactSubmit, handleQuoteSubmit } from "../handlers/public";
+import { handleMediaUpload } from "../handlers/media";
 import { sessionMiddleware } from "../middleware/session";
 import { requireMonitoringAccess } from "../middleware/monitoring";
 import { wrapHandler, wrapMiddleware } from "../utils/wrap";
@@ -34,4 +35,12 @@ export function registerRoutes(router: Router, ctx: AppContext) {
   // --- Formulaires publics (sans CSRF, rate-limit IP) ---
   router.post("/api/public/contact", wrapMiddleware(ctx.publicRateLimitMiddleware), wrapHandler(handleContactSubmit));
   router.post("/api/public/quote", wrapMiddleware(ctx.publicRateLimitMiddleware), wrapHandler(handleQuoteSubmit));
+
+  // --- Médias (upload, protégé session) ---
+  router.post(
+    "/api/media",
+    wrapMiddleware(ctx.authRateLimitMiddleware),
+    wrapMiddleware(sessionMiddleware),
+    wrapHandler(handleMediaUpload),
+  );
 }

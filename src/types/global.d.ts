@@ -116,6 +116,17 @@ declare global {
     publicRateLimitWindow: number;
     /** Version actuelle du consentement RGPD. */
     consentVersion: string;
+    // ── Storage / Upload (section 09) ────────────────────────────────────────
+    storage: {
+      backend: "disk" | "r2";
+      diskPath: string;
+      diskMaxBytes: number;
+      maxFileSizeBytes: number;
+      allowedMimeTypes: string[];
+      imageMaxWidth: number;
+      imageMaxHeight: number;
+      variantSizes: number[];
+    };
   }
 
   interface EnvSchemaResult<TOutput = AppConfig> {
