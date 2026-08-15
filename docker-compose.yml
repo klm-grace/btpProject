@@ -50,6 +50,34 @@ services:
     networks:
       - btp-internal
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: btp-api:latest
+    container_name: btp-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DB_URL: postgresql://btp_dev:btp_dev_password@postgres:5432/btp_dev
+      REDIS_URL: redis://:btp_dev_redis_password@redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      TRUST_PROXY: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs:rw
+      - ./logs-backup:/app/logs/backup:rw
+    networks:
+      - btp-internal
+
 networks:
   btp-internal:
     name: btp-internal
