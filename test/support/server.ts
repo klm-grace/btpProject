@@ -103,7 +103,7 @@ export async function getTestServer(): Promise<ApiServer> {
     db: { sql: db.sql },
   };
   const rbacCfg: RbacConfig = {
-    cacheTtlMs: config.rbacCacheTtlMinutes * 60 * 1000,
+    cacheTtlMs: 0, // Disable cache in tests to pick up DB changes immediately
     cookieName: COOKIE_NAMES.session,
   };
   const rbac = createRbac(rbacDeps, rbacCfg);
