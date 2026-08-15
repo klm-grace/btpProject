@@ -6,7 +6,8 @@
  *  1. Vérifie la taille du body selon Content-Type
  *  2. Parse automatiquement le JSON et attache ctx.state.body
  *  3. Rejette les tentatives de prototype pollution
- *  4. Ne fait rien pour les requêtes non-JSON (GET, multipart, etc.)
+ *  4. Rejette les requêtes chunked (sécurité anti-bypass)
+ *  5. Ne fait rien pour les requêtes non-JSON (GET, multipart, etc.)
  *
  * Usage:
  *   const bodyMiddleware = createBodyMiddleware({ jsonMaxBytes: 4096, multipartMaxBytes: 10_485_760 });
@@ -42,6 +43,16 @@ export function createBodyMiddleware(config: BodyMiddlewareConfig): Middleware {
   return async (req, ctx, next) => {
     const contentType = (req.headers.get("content-type") || "").toLowerCase();
     const raw = req.headers.get("content-length");
+    const transferEncoding = (req.headers.get("transfer-encoding") || "").toLowerCase();
+
+    // ── Rejet explicite de Transfer-Encoding: chunked ─────────────────────
+    // Chunked encoding bypass la vérification Content-Length → risque DoS
+    if (transferEncoding.includes("chunked")) {
+      return new Response(
+        JSON.stringify({ success: false, error: { code: "CHUNKED_ENCODING_NOT_ALLOWED", message: "Chunked transfer encoding is not allowed" } }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
 
     // ── Déterminer la limite selon Content-Type ───────────────────────────
     let limit: number | null = null;
@@ -66,7 +77,7 @@ export function createBodyMiddleware(config: BodyMiddlewareConfig): Middleware {
       const len = Number(raw);
       if (!Number.isFinite(len) || len < 0) {
         return new Response(
-          JSON.stringify({ success: false, error: { code: "INVALID_CONTENT_LENGTH", message: "Invalid Content-Length" } }),
+          JSON.stringify({ success: false, error: { code: "INVALID_CONTENT_LENGTH", message: "Invalid Content-Length", requestId: ctx.requestId } }),
           { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -77,6 +88,7 @@ export function createBodyMiddleware(config: BodyMiddlewareConfig): Middleware {
             error: {
               code: "BODY_TOO_LARGE",
               message: `Request body too large (max ${limit} bytes)`,
+              requestId: ctx.requestId,
             },
           }),
           { status: 413, headers: { "Content-Type": "application/json" } },
@@ -96,7 +108,7 @@ export function createBodyMiddleware(config: BodyMiddlewareConfig): Middleware {
         }
       } catch {
         return new Response(
-          JSON.stringify({ success: false, error: { code: "INVALID_JSON", message: "Invalid JSON body" } }),
+          JSON.stringify({ success: false, error: { code: "INVALID_JSON", message: "Invalid JSON body", requestId: ctx.requestId } }),
           { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -104,7 +116,7 @@ export function createBodyMiddleware(config: BodyMiddlewareConfig): Middleware {
       // ── Protection prototype pollution ───────────────────────────────
       if (hasPrototypePollution(body)) {
         return new Response(
-          JSON.stringify({ success: false, error: { code: "PROTOTYPE_POLLUTION", message: "Invalid request body" } }),
+          JSON.stringify({ success: false, error: { code: "PROTOTYPE_POLLUTION", message: "Invalid request body", requestId: ctx.requestId } }),
           { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }

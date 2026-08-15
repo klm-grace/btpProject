@@ -199,4 +199,34 @@ describe("body middleware", () => {
     expect(called).toBe(false);
     expect(res.status).toBe(413);
   });
+
+  it("rejette Transfer-Encoding: chunked", async () => {
+    const mw = makeMiddleware();
+    const req = new Request("http://localhost/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Transfer-Encoding": "chunked" },
+      body: '{"email":"test@example.com"}',
+    });
+    const ctx = makeCtx();
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    const res = await mw(req, ctx, next);
+    expect(called).toBe(false);
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text()) as { error: { code: string } };
+    expect(body.error.code).toBe("CHUNKED_ENCODING_NOT_ALLOWED");
+  });
+
+  it("inclut requestId dans les erreurs JSON", async () => {
+    const mw = makeMiddleware();
+    const req = makeJsonRequest("{ invalid json }");
+    const ctx = makeCtx();
+    ctx.requestId = "req-123";
+    let called = false;
+    const next = () => { called = true; return Promise.resolve(new Response("ok")); };
+    const res = await mw(req, ctx, next);
+    expect(called).toBe(false);
+    const body = JSON.parse(await res.text()) as { error: { code: string; requestId: string } };
+    expect(body.error.requestId).toBe("req-123");
+  });
 });

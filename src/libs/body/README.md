@@ -1,38 +1,50 @@
 /**
- * body — Bibliothèque de parser et validation de corps de requête.
+ * body — Middleware de parsing et validation des corps de requête.
  *
  * ## Rôle
  *
- * Incapsuler la vérification de taille des bodies HTTP selon le Content-Type :
- * - `application/json` → limite stricte (4 Ko par défaut)
- * - `multipart/form-data` → limite plus宽松 (10 Mo par défaut)
- * - Autre → limite multipart
+ * Middleware de parsing des corps de requête HTTP qui s'intercepte avant
+ * les routes pour :
+ * - Parser automatiquement le JSON et attacher `ctx.state.body`
+ * - Vérifier la taille du body selon Content-Type
+ * - Protéger contre la prototype pollution
+ * - Rejeter les requêtes `Transfer-Encoding: chunked`
  *
  * ## Usage
  *
  * ```ts
- * import { createBodyParser } from "@libs/body";
+ * import { createBodyMiddleware } from "@libs/body";
  *
- * const parser = createBodyParser(
- *   { log },
- *   { jsonMaxBytes: 4096, multipartMaxBytes: 10 * 1024 * 1024 }
- * );
+ * const bodyMiddleware = createBodyMiddleware({
+ *   jsonMaxBytes: 4_096,          // 4 Ko pour JSON
+ *   multipartMaxBytes: 10_485_760, // 10 Mo pour uploads
+ * });
  *
- * // Dans le fetchHandler :
- * const tooLarge = parser.check(req);
- * if (tooLarge) return tooLarge;
- *
- * // Pour parser du JSON :
- * const body = await parser.parseJson(req);
+ * router.use(bodyMiddleware);
  * ```
+ *
+ * ## Comportement
+ *
+ * | Content-Type | Action |
+ * |---|---|
+ * | `application/json` | Parse JSON → `ctx.state.body`, vérifie taille |
+ * | `multipart/form-data` | Skip (laisse au handler), vérifie taille |
+ * | Autre | Skip (pas de body à parser) |
+ * | `Transfer-Encoding: chunked` | Rejet immédiat (400) |
  *
  * ## Sécurité
  *
- * - Vérification **avant** tout parsing (pas de buffer mémoires inutiles)
- * - Basé sur `Content-Length` header (rejet rapide)
- * - JSON malformed → erreur `invalid_json_body` (pas d'information exposée)
- * - Body trop gros → erreur `body_too_large` (pas de détails exposés)
+ * - **Body size limits** : rejet 413 si dépassement
+ * - **Prototype pollution** : rejet 400 si `__proto__`, `constructor`, `prototype`
+ * - **Chunked encoding** : rejet 400 (bypass Content-Length)
+ * - **JSON malformed** : rejet 400
+ * - **requestId** : inclus dans toutes les erreurs
+ *
+ * ## Tests
+ *
+ * ```bash
+ * bun test src/libs/body/body.test.ts
+ * ```
  */
 
-export { createBodyParser } from "./body.ts";
-export type { BodyConfig, BodyDeps, BodyParser } from "./types.ts";
+export { createBodyMiddleware, type BodyMiddlewareConfig } from "./body.ts";
