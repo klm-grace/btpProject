@@ -119,7 +119,8 @@ export function json<T>(
   const bodyObj = body as Record<string, unknown>;
 
   // Détecte si c'est une erreur via la clé "error"
-  if (bodyObj.error !== undefined) {
+  // Attention: si body est null/undefined, bodyObj est {} après coercion → pas d'erreur
+  if (body !== null && body !== undefined && bodyObj.error !== undefined) {
     const code = errorOptions?.code ?? "error";
     const errorStatus = status !== 200 ? status : 400;
     const error: Record<string, unknown> = { code, message: String(bodyObj.error) };
@@ -223,12 +224,11 @@ export function jsonPaginated<T>(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Réponse streaming pour fichiers binaires, images, ou SSE.
+ * jsonStream() — Streaming binaire / SSE (nouveau)
  *
- * @example
- *   jsonStream(fileBlob, { contentType: "image/png" })
- *   jsonStream(readableStream, { contentType: "application/octet-stream" })
- *   jsonStream("text/plain", { contentType: "text/plain" })
+ * ⚠️  Security: Pas de limite de taille sur le body stream.
+ *    Le caller doit s'assurer que le stream a une taille raisonnable.
+ *    Pour les gros fichiers, utiliser un streaming chunké avec Content-Length.
  */
 export function jsonStream(
   body: ReadableStream<Uint8Array> | Blob | string | Uint8Array,

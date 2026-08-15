@@ -24,6 +24,19 @@ describe("json() — helper principal", () => {
     expect(res.headers.get("content-type")).toContain("application/json");
   });
 
+  it("accepte null comme body", async () => {
+    const res = json(null);
+    const body = JSON.parse(await res.text()) as { success: boolean; data: null };
+    expect(body).toEqual({ success: true, data: null });
+  });
+
+  it("accepte undefined comme body", async () => {
+    const res = json(undefined);
+    const body = JSON.parse(await res.text()) as { success: boolean; data: unknown };
+    // JSON.stringify(undefined) → undefined → Response body = "undefined"
+    expect(body.success).toBe(true);
+  });
+
   it("succès avec status custom", async () => {
     const res = json({ id: 1 }, 201);
     expect(res.status).toBe(201);
