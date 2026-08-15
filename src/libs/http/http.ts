@@ -257,3 +257,146 @@ export function jsonStream(
 
   return new Response(bodyValue, { status, headers });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// text() — Réponse texte brut (text/plain)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Réponse texte brut (text/plain).
+ *
+ * @example
+ *   text("Hello World")
+ *   text("Plain text", 200)
+ *   text("Created", 201)
+ */
+export function text(body: string, status: number = 200, options: { headers?: Record<string, string> } = {}): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+      ...(options.headers ?? {}),
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// html() — Réponse HTML (text/html)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Réponse HTML (text/html).
+ *
+ * @example
+ *   html("<h1>Hello</h1>")
+ *   html("<h1>Hello</h1>", 200)
+ *   html("<h1>Created</h1>", 201)
+ */
+export function html(body: string, status: number = 200, options: { headers?: Record<string, string> } = {}): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "text/html;charset=utf-8",
+      ...(options.headers ?? {}),
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// xml() — Réponse XML (application/xml)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Réponse XML (application/xml).
+ * Note: ne fait PAS d'échappement — le caller doit s'assurer que le XML est valide.
+ *
+ * @example
+ *   xml("<root><item>test</item></root>")
+ *   xml("<root>data</root>", 200)
+ */
+export function xml(body: string, status: number = 200, options: { headers?: Record<string, string> } = {}): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "application/xml;charset=utf-8",
+      ...(options.headers ?? {}),
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// notFound() — Réponse 404 standardisée
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Réponse 404 standardisée (JSON avec envelope).
+ *
+ * @example
+ *   notFound()
+ *   notFound("Resource not found")
+ *   notFound({ code: "USER_NOT_FOUND", message: "User not found" })
+ */
+export function notFound(
+  messageOrDetails: string | { code: string; message: string; requestId?: string; details?: Record<string, unknown> } = "Not found",
+  options: { requestId?: string; headers?: Record<string, string> } = {}
+): Response {
+  const details = typeof messageOrDetails === "string"
+    ? { code: "NOT_FOUND", message: messageOrDetails }
+    : messageOrDetails;
+  return jsonError(details, 404);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// send() — Auto-détection du format (style Express res.send)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Envoie une réponse avec auto-détection du format (style Express res.send).
+ *
+ * Détection:
+ * - string commençant par < → html()
+ * - string XML valide → xml()
+ * - object/array → json()
+ * - string → text()
+ * - autre → json() (tentative)
+ *
+ * @example
+ *   send("Hello")                    → text()
+ *   send("<h1>Hello</h1>")           → html()
+ *   send("<root>data</root>")        → xml()
+ *   send({ user: { id: 1 } })        → json()
+ *   send([1, 2, 3])                  → json()
+ *   send(123)                        → json()
+ */
+export function send(
+  body: unknown,
+  status: number = 200,
+  options: { headers?: Record<string, string> } = {}
+): Response {
+  // null/undefined → empty 204
+  if (body === null || body === undefined) {
+    return new Response(null, { status: 204, headers: { ...options.headers } });
+  }
+
+  // string → détection format
+  if (typeof body === "string") {
+    const trimmed = body.trimStart();
+    if (trimmed.startsWith("<")) {
+      // Probablement HTML ou XML
+      // XML si commence par <?xml ou <root> (heuristique simple)
+      if (trimmed.startsWith("<?xml") || trimmed.startsWith("<root") || trimmed.startsWith("<Root")) {
+        return xml(body, 200, { headers: options.headers });
+      }
+      return html(body, 200, { headers: options.headers });
+    }
+    return text(body, status, { headers: options.headers });
+  }
+
+  // Object/Array → json
+  if (typeof body === "object") {
+    return json(body, status);
+  }
+
+  // number, boolean, bigint → json (via safeStringify)
+  return json(body, status);
+}
