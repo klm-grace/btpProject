@@ -261,12 +261,16 @@ async function bootstrap() {
 
   const fetchHandler = async (req: Request) => {
     const requestId = getRequestId(req);
+    const startedAt = performance.now();
 
     try {
       // Le body middleware est géré par router.use() avant les routes
 
       const preflight = cors.handlePreflight(req);
-      if (preflight) return preflight;
+      if (preflight) {
+        logRequest(req, preflight.status, requestId, startedAt);
+        return preflight;
+      }
 
       const response = await router.handle(req, { app: ctx });
 
@@ -279,13 +283,36 @@ async function bootstrap() {
         }
       }
 
+      const status = finalRes.status;
+      logRequest(req, status, requestId, startedAt);
+
       return addRequestIdHeader(finalRes, requestId);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       log.error("Unhandled API error", { error: err, requestId });
+      logRequest(req, 500, requestId, startedAt);
       return jsonError({ code: "INTERNAL_ERROR", message: "Internal Server Error" }, 500);
     }
   };
+
+  function logRequest(req: Request, status: number, requestId: string, startedAt: number): void {
+    try {
+      const url = new URL(req.url);
+      const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
+      log.info("HTTP request", {
+        method: req.method,
+        path: url.pathname,
+        query: url.search,
+        status,
+        durationMs,
+        requestId,
+        ip: ctx.trustedProxy.getClientIp(req),
+        userAgent: req.headers.get("user-agent"),
+      });
+    } catch {
+      // ne jamais faire échouer une requête pour un problème de logging
+    }
+  }
 
   const server = Bun.serve({
     port: config.server.port,
@@ -295,6 +322,16 @@ async function bootstrap() {
   });
 
   log.info(`API Server running at http://${server.hostname}:${server.port}`);
+
+  async function gracefulShutdown(): Promise<void> {
+    log.info("Graceful shutdown initiated");
+    await server.stop();
+    await log.shutdown();
+    process.exit(0);
+  }
+  process.on("SIGTERM", gracefulShutdown);
+  process.on("SIGINT", gracefulShutdown);
+
   return { server, ctx };
 }
 

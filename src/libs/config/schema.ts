@@ -43,6 +43,12 @@ const envSchema = z.object({
   publicRateLimitWindow: z.coerce.number().int().min(10).max(3600).default(300),
   consentVersion: z.string().default("1.0"),
   paginationSecret: z.string().min(32, "PAGINATION_SECRET doit faire au moins 32 caractères").default(""),
+  logDir: z.string().default("./logs"),
+  logMaxSizeBytes: z.coerce.number().int().min(1 * 1024 * 1024).default(10 * 1024 * 1024),
+  logMaxFiles: z.coerce.number().int().min(1).max(30).default(5),
+  logDiskMaxPercent: z.coerce.number().int().min(50).max(99).default(90),
+  logFlushIntervalMs: z.coerce.number().int().min(10).max(5000).default(100),
+  logMaxQueueSize: z.coerce.number().int().min(10).max(2000).default(200),
   // ── Storage / Upload (section 09) ─────────────────────────────────────
   storageBackend: z.enum(["disk", "r2"]).default("disk"),
   storageDiskPath: z.string().default("./data/uploads"),
@@ -85,6 +91,13 @@ type ParsedConfig = {
   publicRateLimitWindow: number;
   consentVersion: string;
   paginationSecret: string;
+  // ── Logger ──────────────────────────────────────────────────────────────
+  logDir: string;
+  logMaxSizeBytes: number;
+  logMaxFiles: number;
+  logDiskMaxPercent: number;
+  logFlushIntervalMs: number;
+  logMaxQueueSize: number;
   // ── Storage / Upload (section 09) ─────────────────────────────────────
   storageBackend: "disk" | "r2";
   storageDiskPath: string;
@@ -104,7 +117,16 @@ function toConfig(parsed: ParsedConfig): AppConfig {
   return {
     env: parsed.app,
     server: { host: parsed.host, port: parsed.port },
-    log: { level: parsed.logLevel, formatted: parsed.logFormatted === "true" },
+    log: {
+      level: parsed.logLevel,
+      formatted: parsed.logFormatted === "true",
+      logDir: parsed.logDir,
+      maxSizeBytes: parsed.logMaxSizeBytes,
+      maxFiles: parsed.logMaxFiles,
+      diskMaxPercent: parsed.logDiskMaxPercent,
+      flushIntervalMs: parsed.logFlushIntervalMs,
+      maxQueueSize: parsed.logMaxQueueSize,
+    },
     db: { url: parsed.databaseUrl },
     redis: { url: parsed.redisUrl },
     corsOrigins: parsed.corsOrigins.split(",").map((o) => o.trim()).filter(Boolean),
@@ -154,7 +176,8 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         corsOrigins: raw.CORS_ORIGINS,
         trustProxy: raw.TRUST_PROXY,
         monitoringToken: raw.MONITORING_TOKEN,
-        logFormatted: raw.LOG_FORMATTED,
+        // Formatage couleur uniquement en dev/test ; prod = JSON brut (par défaut)
+        logFormatted: raw.LOG_FORMATTED ?? (raw.NODE_ENV === "production" ? "false" : "true"),
         sessionSecret: raw.SESSION_SECRET,
         sessionExpiryHours: raw.SESSION_EXPIRY_HOURS,
         mfaIssuer: raw.MFA_ISSUER,
@@ -165,6 +188,13 @@ export function createConfig(): EnvSchemaResult<AppConfig> {
         publicRateLimitWindow: raw.PUBLIC_RATE_LIMIT_WINDOW,
         consentVersion: raw.CONSENT_VERSION,
         paginationSecret: raw.PAGINATION_SECRET,
+        // ── Logger ────────────────────────────────────────────────────────
+        logDir: raw.LOG_DIR,
+        logMaxSizeBytes: raw.LOG_MAX_SIZE_BYTES,
+        logMaxFiles: raw.LOG_MAX_FILES,
+        logDiskMaxPercent: raw.LOG_DISK_MAX_PERCENT,
+        logFlushIntervalMs: raw.LOG_FLUSH_INTERVAL_MS,
+        logMaxQueueSize: raw.LOG_MAX_QUEUE_SIZE,
         // ── Storage / Upload (section 09) ───────────────────────────────
         storageBackend: raw.STORAGE_BACKEND,
         storageDiskPath: raw.STORAGE_DISK_PATH,

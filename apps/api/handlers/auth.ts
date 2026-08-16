@@ -82,7 +82,6 @@ export const handleLogin: RouteHandler = async (req, ctx) => {
         });
         // Log to security file for intrusion detection
         app.log.security("Auth failure", {
-          userId: user?.id,
           email: normalizedEmail.slice(0, 3) + "***", // Partial email for tracking
           ip: app.trustedProxy.getClientIp(req),
           reason: result.error,

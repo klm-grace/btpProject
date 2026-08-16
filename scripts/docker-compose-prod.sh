@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════
-# START PROD DOCKER — Démarrage de l'API uniquement
+# DOCKER:RUN — Démarrage ordonné : VictoriaLogs d'abord, puis API
+# Si VL ne démarre pas → warning, l'API continue avec fallback disque
 # ═══════════════════════════════════════════════════════════════
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,30 +16,64 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║     Production Docker — BTP API                      ║${NC}"
+echo -e "${CYAN}║     Docker Run — BTP Project (VictoriaLogs)          ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# ── Démarrer l'API ─────────────────────────────────────────
-echo -e "${CYAN}▶ Démarrage de l'API${NC}"
-docker rm -f btp-api 2>/dev/null || true
-docker run -d \
-  --name btp-api \
-  --network btp-internal \
-  -p 4000:4000 \
-  --env-file .env \
-  -e NODE_ENV=production \
-  -e HOST=0.0.0.0 \
-  -e DATABASE_URL=postgres://btp_dev:btp_dev_password@postgres:5432/btp_dev \
-  -e REDIS_URL=redis://:btp_dev_redis_password@redis:6379 \
-  -v "$(pwd)/logs:/app/logs:rw" \
-  -v "$(pwd)/logs-backup:/app/logs/backup:rw" \
-  btp-api:latest >/dev/null
+# ── 1. Démarrer VictoriaLogs ─────────────────────────────────────────────
+echo -e "${CYAN}▶ Démarrage de VictoriaLogs...${NC}"
+docker compose up -d victorialogs 2>/dev/null || {
+  echo -e "${YELLOW}  ⚠ docker compose up échoué (VL non démarré)${NC}"
+  VL_OK=false
+}
 
-echo -e "${GREEN}  ✓ API démarrée : http://localhost:4000${NC}"
+echo -e "${CYAN}  ⏳ Attente de VictoriaLogs (max 60s)...${NC}"
+VL_OK=false
+for i in $(seq 1 30); do
+  # VictoriaLogs est un binaire Go sans shell → check via curl hôte
+  if curl -s -f http://localhost:9428/health >/dev/null 2>&1; then
+    VL_OK=true
+    echo -e "${GREEN}  ✓ VictoriaLogs healthy (étape $i/30)${NC}"
+    break
+  fi
+  echo "  étape $i/30..."
+  if [ "$i" -eq 30 ]; then
+    echo -e "${YELLOW}  ⚠ VictoriaLogs pas reachable après 60s${NC}"
+  fi
+  sleep 2
+done
 echo ""
 
-# ── Attendre que l'API soit prête ──────────────────────────
+# ── 2. Démarrer PostgreSQL et Redis ──────────────────────────────────────
+echo -e "${CYAN}▶ Démarrage des dépendances...${NC}"
+docker compose up -d postgres redis 2>/dev/null || {
+  echo -e "${YELLOW}  ⚠ Certains services n'ont pas démarré${NC}"
+}
+
+echo -e "${CYAN}  ⏳ Attente de PostgreSQL et Redis...${NC}"
+for svc in postgres redis; do
+  for i in $(seq 1 20); do
+    STATUS=$(docker inspect --format='{{.State.Health.Status}}' "btp-$svc" 2>/dev/null || echo "not_found")
+    if [ "$STATUS" = "healthy" ]; then
+      echo -e "${GREEN}  ✓ $svc healthy${NC}"
+      break
+    fi
+    if [ "$i" -eq 20 ]; then
+      echo -e "${YELLOW}  ⚠ $svc pas healthy (l'API continuera)${NC}"
+    fi
+    sleep 1
+  done
+done
+echo ""
+
+# ── 3. Démarrer l'API ───────────────────────────────────────────────────
+echo -e "${CYAN}▶ Démarrage de l'API${NC}"
+docker compose up -d api 2>/dev/null || {
+  echo -e "${RED}  ✗ Échec du démarrage de l'API${NC}"
+  exit 1
+}
+
+# ── 4. Attendre que l'API soit prête ────────────────────────────────────
 echo -e "${CYAN}  ⏳ Attente de l'API...${NC}"
 for i in $(seq 1 20); do
   if curl -s http://localhost:4000/api/ready >/dev/null 2>&1; then
@@ -48,14 +83,24 @@ for i in $(seq 1 20); do
   if [ "$i" -eq 20 ]; then
     echo -e "${YELLOW}  ⚠ API non prête après 20s${NC}"
   fi
-  sleep 2
+  sleep 1
 done
 echo ""
 
+# ── 5. Résumé ───────────────────────────────────────────────────────────
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  ✓ Production démarrée !                             ║${NC}"
+echo -e "${GREEN}║  ✓ Docker run terminé                                ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}║  API        : http://localhost:4000                  ║${NC}"
-echo -e "${GREEN}║  Arrêter API : docker rm -f btp-api                  ║${NC}"
-echo -e "${GREEN}║  Arrêter tout: docker compose down                   ║${NC}"
+echo -e "${GREEN}║  VictoriaLogs: http://localhost:9428                 ║${NC}"
+if [ "$VL_OK" = true ]; then
+  echo -e "${GREEN}║  VictoriaLogs : ✅ actif (logs envoyés)             ║${NC}"
+else
+  echo -e "${YELLOW}║  VictoriaLogs : ⚠ indisponible (fallback disque)    ║${NC}"
+fi
+echo -e "${GREEN}║                                                      ║${NC}"
+echo -e "${GREEN}║  Arrêter : docker compose stop                       ║${NC}"
+echo -e "${GREEN}║  Logs API : docker compose logs -f api               ║${NC}"
+echo -e "${GREEN}║  Logs VL : docker compose logs -f victorialogs       ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
+

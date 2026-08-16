@@ -32,12 +32,20 @@ declare global {
     formatted?: boolean;
     /** Activer la rotation automatique des fichiers log. */
     rotate?: boolean;
-    /** Dossier de stockage des fichiers log. */
+    /** Dossier de stockage des fichiers log (fallback disque). */
     logDir?: string;
-    /** Taille max par fichier en bytes. */
+    /** Taille max par fichier en bytes (fallback disque). */
     maxSizeBytes?: number;
-    /** Nombre max de fichiers rotativés. */
+    /** Nombre max de fichiers rotativés (fallback disque). */
     maxFiles?: number;
+    /** Taille max du tampon avant flush (entries). */
+    maxQueueSize?: number;
+    /** Délai de flush en ms. */
+    flushIntervalMs?: number;
+    /** Seuil disque max en % avant suspension des écritures (fallback). */
+    diskMaxPercent?: number;
+    /** Intervalle de vérification disque en ms. */
+    diskCheckIntervalMs?: number;
   }
 
   interface Logger {
@@ -49,8 +57,10 @@ declare global {
     /** Log événement de sécurité (écriture dans security.log) */
     security(message: string, fields?: Record<string, unknown>): void;
     child(fields: Record<string, unknown>): Logger;
-    rotateLogs(): void;
-    cleanupOldLogs(): number;
+    rotateLogs(): Promise<void>;
+    cleanupOldLogs(): Promise<number>;
+    /** Ferme proprement les flux et le watchdog disque. */
+    shutdown(): Promise<void>;
   }
 
   // ---------------------------------------------------------------------------
@@ -97,6 +107,12 @@ declare global {
     log: {
       level: LogLevel;
       formatted: boolean;
+      logDir?: string;
+      maxSizeBytes?: number;
+      maxFiles?: number;
+      diskMaxPercent?: number;
+      flushIntervalMs?: number;
+      maxQueueSize?: number;
     };
     db: {
       url: string;

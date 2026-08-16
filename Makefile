@@ -1,4 +1,4 @@
-.PHONY: help start stop restart logs docker-build docker-up docker-down elasticsearch logstash kibana clean
+.PHONY: help start stop restart logs docker-build docker-up docker-down victorialogs clean
 
 ## help: Show available commands
 help:
@@ -10,12 +10,10 @@ help:
 	@echo "  make restart     - Restart all services"
 	@echo "  make logs        - Follow all logs"
 	@echo "  make logs:app    - Follow app logs only"
-	@echo "  make logs:elk    - Follow ELK logs"
+	@echo "  make logs:vlogs  - Follow VictoriaLogs logs"
 	@echo ""
-	@echo "ELK Stack:"
-	@echo "  make elasticsearch - Start Elasticsearch only"
-	@echo "  make logstash      - Start Logstash only"
-	@echo "  make kibana        - Start Kibana only"
+	@echo "Logs Stack:"
+	@echo "  make victorialogs - Start VictoriaLogs only"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make docker-up   - Build and start all containers"
@@ -33,85 +31,64 @@ help:
 	@echo "  make backup      - Backup logs"
 	@echo ""
 
-## start: Start all services (PostgreSQL, Redis, ELK, API)
+## start: Start all services (PostgreSQL, Redis, VictoriaLogs, API)
 start:
-	docker-compose up -d postgres redis elasticsearch logstash kibana
+	docker compose up -d postgres redis victorialogs
 	@echo "Waiting for services to be healthy..."
-	@docker-compose up -d api
+	@docker compose up -d api
 	@echo ""
 	@echo "=== Services Started ==="
-	@echo "PostgreSQL:  http://localhost:5432"
-	@echo "Redis:       http://localhost:6379"
-	@echo "API:         http://localhost:4000"
-	@echo "Elasticsearch: http://localhost:9200"
-	@echo "Kibana:      http://localhost:5601"
-	@echo ""
-	@echo "ELK password: btp-elastic-2026!"
+	@echo "PostgreSQL:     http://localhost:5432"
+	@echo "Redis:          http://localhost:6379"
+	@echo "API:            http://localhost:4000"
+	@echo "VictoriaLogs:   http://localhost:9428"
 	@echo ""
 	@echo "Logs location: ./logs/"
 	@echo "  - app.log              (general app logs)"
 	@echo "  - security.log         (security events)"
-	@echo "  - elasticsearch/       (ES data)"
-	@echo "  - kibana/              (Kibana data)"
+	@echo "  - victorialogs/        (VictoriaLogs data)"
 
 ## stop: Stop all services
 stop:
-	docker-compose down
+	docker compose down
 	@echo "All services stopped."
 
 ## restart: Restart all services
 restart:
-	docker-compose down
-	docker-compose up -d
+	docker compose down
+	docker compose up -d
 
 ## logs: Follow all container logs
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 ## logs:app: Follow API logs only
 logs:app:
-	docker-compose logs -f api
+	docker compose logs -f api
 	@echo ""
 	@echo "Or watch file logs:"
 	@echo "  tail -f logs/app.log"
 	@echo "  tail -f logs/security.log"
 
-## logs:elk: Follow ELK stack logs
-logs:elk:
-	docker-compose logs -f elasticsearch logstash kibana
+## logs:vlogs: Follow VictoriaLogs logs
+logs:vlogs:
+	docker compose logs -f victorialogs
 
-## elasticsearch: Start Elasticsearch only
-elasticsearch:
-	docker-compose up -d elasticsearch
-	@echo "Elasticsearch starting at http://localhost:9200"
-	@echo "Waiting for health check..."
-	@until docker inspect --format='{{.State.Health.Status}}' btp-elasticsearch 2>/dev/null | grep -q "healthy"; do sleep 2; done
-	@echo "Elasticsearch is healthy!"
-
-## logstash: Start Logstash only
-logstash:
-	docker-compose up -d logstash
-	@echo "Logstash starting at port 5044"
-
-## kibana: Start Kibana only
-kibana:
-	docker-compose up -d kibana
-	@echo "Kibana starting at http://localhost:5601"
-	@echo "Waiting for Kibana..."
-	@until docker inspect --format='{{.State.Health.Status}}' btp-kibana 2>/dev/null | grep -q "healthy"; do sleep 2; done
-	@echo "Kibana is healthy! Access: http://localhost:5601"
-	@echo "Login: elastic / btp-elastic-2026!"
+## victorialogs: Start VictoriaLogs only
+victorialogs:
+	docker compose up -d victorialogs
+	@echo "VictoriaLogs starting at http://localhost:9428"
 
 ## docker-up: Build and start everything
 docker-up:
-	docker-compose up --build -d
+	docker compose up --build -d
 	@echo ""
 	@echo "=== All Services Running ==="
-	@docker-compose ps
+	@docker compose ps
 
 ## docker-down: Stop and remove everything
 docker-down:
-	docker-compose down -v
+	docker compose down -v
 	@echo "All containers and volumes removed."
 
 ## docker-build: Build API image only
@@ -139,8 +116,6 @@ test:fast:
 clean:
 	@echo "Cleaning logs..."
 	@rm -f logs/app.log logs/security.log
-	@rm -f logs/elasticsearch/*
-	@rm -f logs/kibana/*
 	@echo "Clean complete."
 
 ## backup: Backup logs
