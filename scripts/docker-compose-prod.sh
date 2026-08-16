@@ -84,11 +84,17 @@ docker compose up -d nginx 2>/dev/null || {
   exit 1
 }
 
-# ── 5. Attendre que l'API soit prête (via nginx HTTPS) ──────────────────
+# ── 5. Attendre que l'API soit prête (via Nginx) ────────────────────────
+# Détection du mode TLS actif (https = redirection, sinon http direct)
 echo -e "${CYAN}  ⏳ Attente de l'API via Nginx...${NC}"
+TLS_MODE="$(bash "$SCRIPT_DIR/nginx-tls.sh" status 2>/dev/null | grep -oE 'https|http' | head -1 || echo http)"
+API_BASE="http://localhost"
+if [ "$TLS_MODE" = "https" ]; then
+  API_BASE="https://localhost"
+fi
 for i in $(seq 1 20); do
-  if curl -sk https://localhost/api/ready >/dev/null 2>&1; then
-    echo -e "${GREEN}  ✓ API prête (étape $i/20)${NC}"
+  if curl -sk "$API_BASE/api/ready" >/dev/null 2>&1; then
+    echo -e "${GREEN}  ✓ API prête (étape $i/20) — $API_BASE${NC}"
     break
   fi
   if [ "$i" -eq 20 ]; then
@@ -102,7 +108,7 @@ echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║  ✓ Docker run terminé                                ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║  API (via Nginx) : https://localhost                 ║${NC}"
+echo -e "${GREEN}║  API (via Nginx) : ${API_BASE}                      ║${NC}"
 echo -e "${GREEN}║  VictoriaLogs    : http://localhost:9428             ║${NC}"
 if [ "$VL_OK" = true ]; then
   echo -e "${GREEN}║  VictoriaLogs : ✅ actif (logs envoyés)             ║${NC}"
