@@ -60,6 +60,7 @@ describe("storage", () => {
       await storage.put("a.txt", new TextEncoder().encode("aaa"));
       const after = await storage.size();
       expect(after).toBeGreaterThanOrEqual(before + 3);
+      await storage.del("a.txt");
     });
 
     it("path traversal blocked — écriture hors du basePath", async () => {

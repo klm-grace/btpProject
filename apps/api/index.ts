@@ -129,11 +129,11 @@ async function bootstrap() {
 
   // Admin rate limit middleware (doubling ban)
   const adminRateLimitMiddleware = async (req: Request, ctx: any, next: () => Promise<Response>) => {
-    const ip = ctx.app.trustedProxy.getClientIp(req) ?? "unknown";
+    const ip = ctx.state.app.trustedProxy.getClientIp(req) ?? "unknown";
     const url = new URL(req.url);
     const endpoint = url.pathname;
     const userId = ctx.state?.user?.id;
-    const result = await ctx.app.adminRateLimiter.check(ip, endpoint, userId);
+    const result = await ctx.state.app.adminRateLimiter.check(ip, endpoint, userId);
 
     const rateHeaders: Record<string, string> = {};
     if (result.allowed) {
@@ -291,6 +291,7 @@ async function bootstrap() {
     port: config.server.port,
     hostname: config.server.host,
     fetch: fetchHandler,
+    idleTimeout: 30
   });
 
   log.info(`API Server running at http://${server.hostname}:${server.port}`);

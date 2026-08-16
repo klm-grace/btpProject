@@ -23,7 +23,7 @@
     "db:seed": "bun run apps/api/db/seed.ts",
     "db:status": "bun run apps/api/db/status.ts",
     "docker:build": "bash scripts/build-docker.sh",
-    "docker:run": "docker run -p 4000:4000 --env-file .env btp-api:latest",
+    "docker:run": "bash scripts/docker-compose-prod.sh",
     "db:prepare": "bash -c \"bun run db:migrate && bun run db:seed\""
   },
   "dependencies": {

@@ -56,7 +56,6 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.5.1
     container_name: btp-elasticsearch
-    restart: unless-stopped
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
@@ -81,7 +80,6 @@ services:
   logstash:
     image: docker.elastic.co/logstash/logstash:9.5.1
     container_name: btp-logstash
-    restart: unless-stopped
     ports:
       - "127.0.0.1:5044:5044"
     volumes:
@@ -99,7 +97,6 @@ services:
   kibana:
     image: docker.elastic.co/kibana/kibana:9.5.1
     container_name: btp-kibana
-    restart: unless-stopped
     ports:
       - "127.0.0.1:5601:5601"
     environment:

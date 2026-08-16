@@ -2,9 +2,9 @@
 .git
 .gitignore
 
-# Tests
-test/
-**/*.test.ts
+# Tests (nécessaire pour Dockerfile)
+# test/
+# **/*.test.ts
 
 # Développement
 .env
