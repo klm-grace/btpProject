@@ -1,4 +1,4 @@
-.PHONY: help start stop restart logs docker-build docker-up docker-down victorialogs clean
+.PHONY: help start stop restart logs docker-build docker-up docker-down victorialogs clean certs tls-on tls-off
 
 ## help: Show available commands
 help:
@@ -9,11 +9,17 @@ help:
 	@echo "  make stop        - Stop all services"
 	@echo "  make restart     - Restart all services"
 	@echo "  make logs        - Follow all logs"
-	@echo "  make logs:app    - Follow app logs only"
-	@echo "  make logs:vlogs  - Follow VictoriaLogs logs"
+	@echo "  make logs-app    - Follow app logs only"
+	@echo "  make logs-nginx  - Follow nginx logs"
+	@echo "  make logs-vlogs  - Follow VictoriaLogs logs"
 	@echo ""
 	@echo "Logs Stack:"
 	@echo "  make victorialogs - Start VictoriaLogs only"
+	@echo ""
+	@echo "Reverse Proxy:"
+	@echo "  make certs       - Generate self-signed TLS certificates for nginx"
+	@echo "  make tls-on      - Enable HTTPS on nginx (redirect HTTP->HTTPS)"
+	@echo "  make tls-off     - Disable TLS on nginx (HTTP only, no cert required)"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make docker-up   - Build and start all containers"
@@ -24,24 +30,25 @@ help:
 	@echo "  make dev         - Start dev server (Bun)"
 	@echo "  make migrate     - Run database migrations"
 	@echo "  make test        - Run all tests"
-	@echo "  make test:fast   - Run fast tests only"
+	@echo "  make test-fast   - Run fast tests only"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean       - Clean logs and temporary files"
 	@echo "  make backup      - Backup logs"
 	@echo ""
 
-## start: Start all services (PostgreSQL, Redis, VictoriaLogs, API)
+## start: Start all services (PostgreSQL, Redis, VictoriaLogs, API, Nginx)
 start:
 	docker compose up -d postgres redis victorialogs
 	@echo "Waiting for services to be healthy..."
 	@docker compose up -d api
+	@docker compose up -d nginx
 	@echo ""
 	@echo "=== Services Started ==="
-	@echo "PostgreSQL:     http://localhost:5432"
-	@echo "Redis:          http://localhost:6379"
-	@echo "API:            http://localhost:4000"
-	@echo "VictoriaLogs:   http://localhost:9428"
+	@echo "API (via nginx): https://localhost"
+	@echo "PostgreSQL:      http://localhost:5432"
+	@echo "Redis:           http://localhost:6379"
+	@echo "VictoriaLogs:    http://localhost:9428"
 	@echo ""
 	@echo "Logs location: ./logs/"
 	@echo "  - app.log              (general app logs)"
@@ -62,22 +69,38 @@ restart:
 logs:
 	docker compose logs -f
 
-## logs:app: Follow API logs only
-logs:app:
+## logs-app: Follow API logs only
+logs-app:
 	docker compose logs -f api
 	@echo ""
 	@echo "Or watch file logs:"
 	@echo "  tail -f logs/app.log"
 	@echo "  tail -f logs/security.log"
 
-## logs:vlogs: Follow VictoriaLogs logs
-logs:vlogs:
+## logs-nginx: Follow nginx logs only
+logs-nginx:
+	docker compose logs -f nginx
+
+## logs-vlogs: Follow VictoriaLogs logs
+logs-vlogs:
 	docker compose logs -f victorialogs
 
 ## victorialogs: Start VictoriaLogs only
 victorialogs:
 	docker compose up -d victorialogs
 	@echo "VictoriaLogs starting at http://localhost:9428"
+
+## certs: Generate self-signed TLS certificates for nginx (dev only)
+certs:
+	bash scripts/generate-certs.sh
+
+## tls-on: Enable HTTPS on nginx (redirect HTTP->HTTPS)
+tls-on:
+	bash scripts/nginx-tls.sh on
+
+## tls-off: Disable TLS on nginx (HTTP only, no cert required)
+tls-off:
+	bash scripts/nginx-tls.sh off
 
 ## docker-up: Build and start everything
 docker-up:
@@ -108,8 +131,8 @@ migrate:
 test:
 	bun test
 
-## test:fast: Run fast tests only
-test:fast:
+## test-fast: Run fast tests only
+test-fast:
 	bun test src/libs/ test/api/pentest-full.test.ts test/api/security-events.test.ts
 
 ## clean: Clean logs and temp files

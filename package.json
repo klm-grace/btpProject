@@ -24,7 +24,11 @@
     "db:status": "bun run apps/api/db/status.ts",
     "docker:build": "bash scripts/build-docker.sh",
     "docker:run": "bash scripts/docker-compose-prod.sh",
-    "db:prepare": "bash -c \"bun run db:migrate && bun run db:seed\""
+    "db:prepare": "bash -c \"bun run db:migrate && bun run db:seed\"",
+    "certs": "bash scripts/generate-certs.sh",
+    "tls:on": "bash scripts/nginx-tls.sh on",
+    "tls:off": "bash scripts/nginx-tls.sh off",
+    "tls:status": "bash scripts/nginx-tls.sh status"
   },
   "dependencies": {
     "zod": "^4.4.3"

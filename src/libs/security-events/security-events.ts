@@ -22,7 +22,7 @@ export function createSecurityEvents(deps: SecurityEventsDeps, config: SecurityE
 
     await db.sql.unsafe(
       `INSERT INTO security_events (id, user_id, event_type, ip_address, user_agent, details, created_at)
-       VALUES ($1, $2, $3, $4::inet, $5, $6, NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
       [
         require("node:crypto").randomUUID(),
         userId ?? null,

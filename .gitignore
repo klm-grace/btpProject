@@ -50,3 +50,6 @@ Thumbs.db
 logs/*.log
 logs-backup/
 !.gitkeep
+
+# Certificats TLS (ne jamais committer)
+config/nginx/certs/

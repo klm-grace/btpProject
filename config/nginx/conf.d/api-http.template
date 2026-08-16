@@ -1,0 +1,61 @@
+# ═══════════════════════════════════════════════════════════════
+# Nginx — Reverse proxy HTTP (TLS désactivé)
+# Utilisé quand on contacte le serveur par IP sans certificat
+# (à la place d'api-https.conf)
+# ═══════════════════════════════════════════════════════════════
+
+# ── HTTP : reverse proxy direct (pas de redirection) ───────────
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+
+    # Rate-limit de base
+    limit_req zone=api_general burst=20 nodelay;
+    limit_conn perip 20;
+
+    # ── Headers de sécurité (sans HSTS — pas de TLS) ────────────
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+
+    # ── Anti-scanners : répertoires sensibles bloqués ───────────
+    location ~ /\. {
+        deny all;
+        return 404;
+    }
+
+    # ── Anti-path-traversal ─────────────────────────────────────
+    location ~ (\.\.|%2e%2e) {
+        return 400;
+    }
+
+    # ── Healthcheck sans bruit de log ───────────────────────────
+    location = /nginx-health {
+        access_log off;
+        return 200 "nginx ok\n";
+    }
+
+    # ── Routes auth (bruteforce) — rate-limit strict ────────────
+    location ~ ^/api/auth/(login|verify|mfa) {
+        limit_req zone=api_auth burst=10 nodelay;
+        proxy_pass http://api:4000;
+        include /etc/nginx/proxy_params.conf;
+    }
+
+    # ── Formulaires publics — rate-limit renforcé ───────────────
+    location ~ ^/api/public/ {
+        limit_req zone=api_public burst=20 nodelay;
+        proxy_pass http://api:4000;
+        include /etc/nginx/proxy_params.conf;
+    }
+
+    # ── Tout le reste ───────────────────────────────────────────
+    location / {
+        limit_req zone=api_general burst=30 nodelay;
+        proxy_pass http://api:4000;
+        include /etc/nginx/proxy_params.conf;
+    }
+}
